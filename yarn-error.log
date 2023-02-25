@@ -1,0 +1,33 @@
+Arguments: 
+  /usr/local/bin/node /usr/bin/yarn add —dev hardhat
+
+PATH: 
+  /root/.pyenv/shims:/root/.pyenv/bin:/root/.vscode-server/bin/97dec172d3256f8ca4bfb2143f3f76b503ca0534/bin/remote-cli:/root/.pyenv/versions/anaconda3-5.2.0/bin:/root/.pyenv/versions/anaconda3-5.2.0/condabin:/root/.pyenv/shims:/root/.pyenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/ipfs/go-ipfs:/root/bin:/root/ipfs/go-ipfs
+
+Yarn version: 
+  1.22.10
+
+Node version: 
+  14.15.4
+
+Platform: 
+  linux x64
+
+Trace: 
+  TypeError [ERR_UNESCAPED_CHARACTERS]: Request path contains unescaped characters
+      at new ClientRequest (_http_client.js:151:13)
+      at Object.request (https.js:313:10)
+      at Request.module.exports.Request.start (/usr/lib/node_modules/yarn/lib/cli.js:141224:32)
+      at Request.module.exports.Request.end (/usr/lib/node_modules/yarn/lib/cli.js:141983:10)
+      at end (/usr/lib/node_modules/yarn/lib/cli.js:141037:14)
+      at Immediate._onImmediate (/usr/lib/node_modules/yarn/lib/cli.js:141051:7)
+      at processImmediate (internal/timers.js:461:21)
+
+npm manifest: 
+  No manifest
+
+yarn manifest: 
+  No manifest
+
+Lockfile: 
+  No lockfile
