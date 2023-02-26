@@ -71,15 +71,18 @@ contract Optino is Ownable {
         OptionCollection.mint(msg.sender, tokenId, amount);
         liquidityAvailable = liquidityAvailable - (amount * ((1 ether) - getPrice()));
         poolCollateral += (amount * 1 ether);
-
-
     }
-    // TODO: Remove Unneccesary function
-    function poolWithdrawableFunds() public view returns(uint256) {
-        //uint256 unavailable_funds = poolCollateral + realizedLoss;
-        return liquidityAvailable;
+    function exerciseOption(uint256 tokenId, uint256 amount) public {
+        // Move these checks to seperate function? 
+        require(
+            optionExpiredITM[tokenId] == true,
+            "Option is out of the money"
+        );
+        
+        OptionCollection.burn(msg.sender, tokenId, amount);
+        USDC.transfer(msg.sender, (amount * 1 ether));
+        realizedLoss = realizedLoss - (amount * 1 ether);
     }
-
     //TODO: REMOVE IN PRODUCTION. DANGEROUS!!!! Only for debugging/testing
     function setPrice(uint256 priceUSDC) public {
         currentPrice = priceUSDC; 

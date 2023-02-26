@@ -95,14 +95,14 @@ describe("Optino", function() {
 
         expect(option_balance.toString()).to.be.equal("50")
     })
-    it("tests poolAvailableValue() function", async function() {
+    it("tests liquidityAvailabel balances properly() function", async function() {
         await usd.connect(user1).approve(optino.address, ether("25").toString())
         await optino.connect(user1).liquidityDeposit(ether("25").toString());
-        let available_value = await optino.poolWithdrawableFunds()
+        let available_value = await optino.liquidityAvailable()
         expect(available_value).to.equal(ether("25"))
         await usd.connect(buyer1).approve(optino.address, ether("25").toString())
         await optino.connect(buyer1).buyOption(23948, 1750, 50, true)
-        let available_value2 = await optino.poolWithdrawableFunds()
+        let available_value2 = await optino.liquidityAvailable()
         expect(available_value2).to.equal(ether("0"))
     })
 })
@@ -137,11 +137,12 @@ describe("Temporal Tests", function() {
         await usd.mint(buyer1.address, ether("1000").toString())
 
         await usd.connect(lp1).approve(optino.address, ether("100").toString());
+        // 100 usdc provided Liquidity
         await optino.connect(lp1).liquidityDeposit(ether("100").toString());
-
+        // 50 Options bought at .5 ==> 25 in premium 25 from liquidity as collateral
         await usd.connect(buyer1).approve(optino.address, ether("100").toString())
         await optino.connect(buyer1).buyOption(expiry, 1750, 50, true);
-
+        // Option Expired
         await time.increaseTo(expiry)
 
 
@@ -157,7 +158,27 @@ describe("Temporal Tests", function() {
         let realizedLoss = await optino.realizedLoss()
         console.log(ethers.utils.formatEther(realizedLoss))
         expect(realizedLoss).to.equal(ether("50"));
+        
+        let liquidity_available = await optino.liquidityAvailable()
+        expect(liquidity_available).to.equal(ether("75"))
+
+        let pool_collateral = await optino.poolCollateral()
+        expect(pool_collateral).to.equal(ether("0"))
+        
     })
+
+    it("Tests Excercise Options", async function() {
+        await optino.connect(admin).resolveOption(expiry, 1750, true, true);
+        let option_token_id = await option_contract.getOptionTokenId(expiry, 1750, true);
+        
+        await option_contract.connect(buyer1).setApprovalForAll(optino.address, true)
+        await optino.connect(buyer1).exerciseOption(option_token_id, 50)
+        let buyer_usdc_balance = await usd.balanceOf(buyer1.address)
+        // USER Balance 1000 - 25 = 975 --> After win: 975 + 50 = 1025
+        expect(buyer_usdc_balance).to.equal(ether("1025"))
+    })
+    // Check if ITM check returns false prior to expiry
+    // 
 
 
 })
