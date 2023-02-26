@@ -69,7 +69,7 @@ contract Optino is Ownable {
         );
         //TODO: Ensure this executes
         OptionCollection.mint(msg.sender, tokenId, amount);
-        liquidityAvailable = liquidityAvailable - (amount * getPrice());
+        liquidityAvailable = liquidityAvailable - (amount * ((1 ether) - getPrice()));
         poolCollateral += (amount * 1 ether);
 
 

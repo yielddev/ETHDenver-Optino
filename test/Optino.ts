@@ -149,6 +149,14 @@ describe("Temporal Tests", function() {
 
     it("Tests resolveOption Function", async function() {
         await optino.connect(admin).resolveOption(expiry, 1750, true, true);
+        let option_token_id = await option_contract.getOptionTokenId(expiry, 1750, true);
+
+        let isITM = await optino.optionExpiredITM(option_token_id)
+        console.log(isITM)
+        expect(isITM).to.equal(true)
+        let realizedLoss = await optino.realizedLoss()
+        console.log(ethers.utils.formatEther(realizedLoss))
+        expect(realizedLoss).to.equal(ether("50"));
     })
 
 
