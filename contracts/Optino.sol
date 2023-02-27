@@ -2,12 +2,14 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./OptionContract.sol";
+import "./OptinoLPShare.sol";
 
 
 
 contract Optino is Ownable {
     ERC20 public USDC;
     OptionContract public OptionCollection;
+    OptinoLPShares public LPShares;
 
     //TODO: Move to seperate pool contract and pool struct
     uint256 public liquidityAvailable;
@@ -25,6 +27,7 @@ contract Optino is Ownable {
         //TODO: REMOVE 
         currentPrice = 500000000 gwei;
         USDC = ERC20(_usdc); 
+        LPShares = new OptinoLPShares();
         OptionCollection = new OptionContract(); 
     }
     // PROTECT THIS FUNCTION 
@@ -97,13 +100,29 @@ contract Optino is Ownable {
         uint256 collateral_required_per_contract = 1 ether - getPrice();
         return liquidityAvailable / collateral_required_per_contract;
     }
+
+    function LPEquity() public view returns(uint256){
+        // Add current (1 - currentPrice) * total supply of outstanding options
+        return liquidityAvailable;
+    }
         
     function liquidityDeposit(uint256 amount) public {
         // TODO: implement LP shares, and shares/amount calculation
+        uint256 currentLPEquity = LPEquity();
+        uint256 outstandingShares = LPShares.totalSupply();
+        // Add precision for Floating Point
+        if (outstandingShares > 0) {
+            uint256 equityPerShare = currentLPEquity / outstandingShares;
+            uint256 new_shares = amount / equityPerShare;
+        } else {
+            uint256 new_shares = amount;
+        }
+
         require(
             USDC.transferFrom(msg.sender, address(this), amount),
             "LiquidityDeposit: Transfer Failed"
         );
+        LPShares.mint(msg.sender, amount);
         liquidityAvailable += amount;
     }
 }

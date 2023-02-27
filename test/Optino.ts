@@ -33,8 +33,10 @@ describe("Optino", function() {
     var option_contract: ethers.Contract;
     var user1: ethers.SignerWithAddress;
     var buyer1: ethers.SignerWithAddress;
+    var user2: ethers.SignerWithAddress;
+    var user3: ethers.SignerWithAddress;
     beforeEach(async function() {
-        [user1, buyer1] = await ethers.getSigners();
+        [user1, buyer1, user2, user3] = await ethers.getSigners();
         const USDC = await ethers.getContractFactory("USDC")
         usd = await USDC.deploy();
         const Optino = await ethers.getContractFactory("Optino");
@@ -49,6 +51,8 @@ describe("Optino", function() {
         //Mint Mock USDC to test user1
         await usd.mint(user1.address, ether("25").toString())
         await usd.mint(buyer1.address, ether("25").toString())
+        await usd.mint(user2.address, ether("100").toString())
+        await usd.mint(user3.address, ether("150").toString())
     })
 
     it("Executes liquidityDeposit function", async function() {
@@ -105,8 +109,94 @@ describe("Optino", function() {
         let available_value2 = await optino.liquidityAvailable()
         expect(available_value2).to.equal(ether("0"))
     })
+    it("test LiquidityDeposit share distribution", async function() {
+        await usd.connect(user1).approve(optino.address, ether("25").toString())
+        await optino.connect(user1).liquidityDeposit(ether("25").toString())
+        let lp_shares = await optino.LPShares();
+        const LPShares = await ethers.getContractFactory("OptinoLPShares")
+        const lp_shares_instance = await LPShares.attach(lp_shares)
+        let lp_share_balance = await lp_shares_instance.balanceOf(user1.address);
+        expect(lp_share_balance).to.equal(ether("25"))
+        // Second entry 
+        
+        await usd.connect(user2).approve(optino.address, ether("100").toString())
+        await optino.connect(user2).liquidityDeposit(ether("100").toString())
+        expect(await lp_shares_instance.balanceOf(user2.address)).to.equal(ether("100"))
+
+        await usd.connect(user3).approve(optino.address, ether("100").toString())
+        await optino.connect(user3).liquidityDeposit(ether("50").toString())
+        expect(await lp_shares_instance.balanceOf(user2.address)).to.equal(ether("100"))
+        
+    })
+
 })
 
+describe("Test on LP Share Pricing and distribution", function() {
+    var usd: ethers.Contract;
+    var optino: ethers.Contract;
+    var option_contract: ethers.Contract;
+    var admin: ethers.SignerWithAddress;
+    var lp1: ethers.SignerWithAddress;
+    var lp2: ethers.SignerWithAddress;
+    var lp3: ethers.SignerWithAddress;
+    var lp4: ethers.SignerWithAddress;
+    var lp5: ethers.SignerWithAddress;
+    var buyer1: ethers.SignerWithAddress;
+    var buyer2: ethers.SignerWithAddress;
+    var buyer3: ethers.SignerWithAddress;
+    var buyer4: ethers.SignerWithAddress;
+    var buyer5: ethers.SignerWithAddress;
+    var buyer6: ethers.SignerWithAddress;
+    var buyer7: ethers.SignerWithAddress;
+    var expiry: number
+    var lp_shares: ethers.Contract;
+    beforeEach(async function() {
+        const ONE_DAY_IN_SECONDS = 24 * 60 * 60;
+        expiry = (await time.latest()) + ONE_DAY_IN_SECONDS;
+        [
+            admin, lp1, lp2, lp3, lp4, lp5, 
+            buyer1, buyer2, buyer3, buyer4, buyer5, buyer6, buyer7
+        ] = await ethers.getSigners();
+
+        const USDC = await ethers.getContractFactory("USDC");
+        usd = await USDC.deploy();
+
+        const Optino = await ethers.getContractFactory("Optino")
+        optino = await Optino.deploy(usd.address)
+
+        const OptionContract = await ethers.getContractFactory("OptionContract")
+        const option_contract_address = await optino.OptionCollection();
+        option_contract = await OptionContract.attach(option_contract_address);
+        
+        let lp_shares_address = await optino.LPShares();
+        const LPShares = await ethers.getContractFactory("OptinoLPShares")
+        lp_shares = await LPShares.attach(lp_shares_address)
+
+        await usd.mint(lp1.address, ether("100").toString())
+        await usd.mint(lp2.address, ether("100").toString())
+        await usd.mint(lp3.address, ether("100").toString())
+        await usd.mint(lp4.address, ether("100").toString())
+        await usd.mint(lp5.address, ether("100").toString())
+
+        await usd.mint(buyer1.address, ether("100").toString())
+        await usd.mint(buyer2.address, ether("100").toString())
+        await usd.mint(buyer3.address, ether("100").toString())
+        await usd.mint(buyer4.address, ether("100").toString())
+        await usd.mint(buyer5.address, ether("100").toString())
+        await usd.mint(buyer6.address, ether("100").toString())
+        await usd.mint(buyer7.address, ether("100").toString())
+    })
+
+    it("Tests supply liquidity mid option period", async function() {
+        // Pool Kicks Off
+        await usd.connect(lp1).approve(optino.address, ether("50").toString())
+        await optino.connect(lp1).liquidityDeposit(ether("50").toString())
+        expect(await lp_shares.balanceOf(lp1.address)).to.equal(ether("50").toString())
+
+    })
+
+
+})
 describe("Temporal Tests", function() {
     async function OneDayOptionFixture() {
         const ONE_DAY_IN_SECONDS = 24 * 60 * 60;
