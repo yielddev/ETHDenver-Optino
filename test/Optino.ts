@@ -192,7 +192,10 @@ describe("Test on LP Share Pricing and distribution", function() {
         await usd.connect(lp1).approve(optino.address, ether("50").toString())
         await optino.connect(lp1).liquidityDeposit(ether("50").toString())
         expect(await lp_shares.balanceOf(lp1.address)).to.equal(ether("50").toString())
-
+        // Half the pool get collateralized 50 contracts at .5
+        await usd.connect(buyer1).approve(optino.address, ether("25").toString())
+        await optino.connect(buyer1).buyOption(expiry, 1750, 50, true);
+        // second LP comes in at the same net equity
     })
 
 
