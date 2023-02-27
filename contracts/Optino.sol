@@ -23,6 +23,31 @@ contract Optino is Ownable {
     //Map the results of option after expiry
     mapping (uint256 => bool) public optionExpiredITM;
 
+
+    // EPOCH 
+    // EPOCH Rolls over at end of longest Period
+    // 6 hrs 
+    // 12 hrs
+    // 24 hrs
+    struct Expiry {
+        uint256 expiry;
+        uint256 ten_delta;
+        uint256 twenty_five_delta;
+        uint256 fifty_delta;
+    }
+
+    struct Epoch {
+        uint256 startTime;
+        Expiry expire6;
+        Expiry expire12;
+        Expiry expire24;
+        uint256 referencePrice;
+    }
+
+    Epoch public currentEpoch;
+
+    
+
     constructor(address _usdc) {
         //TODO: REMOVE 
         currentPrice = 500000000 gwei;
@@ -30,13 +55,79 @@ contract Optino is Ownable {
         LPShares = new OptinoLPShares();
         OptionCollection = new OptionContract(); 
     }
-    // PROTECT THIS FUNCTION 
-    // function startNewEpoch(uint256 expiry, uint256 price) {
-    // }
 
+
+    function expiryIsInEpoch(uint256 expiry) public view returns(bool) {
+        if (
+            expiry == currentEpoch.expire6.expiry || 
+            expiry == currentEpoch.expire12.expiry || 
+            expiry == currentEpoch.expire24.expiry
+        ) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    // Rewrite to use recalculation of strike based on exp and starttime
+    function strikeIsInEpoch(uint256 strike) public view returns(bool) {
+        if (
+            strike == currentEpoch.expire6.ten_delta ||
+            strike == currentEpoch.expire6.twenty_five_delta ||
+            strike == currentEpoch.expire6.fifty_delta
+        ) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    function isOptionValidInEpoch(uint256 strike, uint256 expiry) public view returns(bool) {
+        if (expiryIsInEpoch(expiry) && strikeIsInEpoch(strike)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    // is this read only?
+    // TODO: Remove current price when feed is available
+    function getDelta(uint256 delta, uint256 currentPrice) public view returns(uint256) {
+        return currentPrice + (delta * 1 ether);
+    }
+    // TODO: Remove current price
+    function startNewEpoch(uint256 start, uint256 currentPrice) onlyOwner public {
+        Expiry memory six = Expiry({
+            expiry: start+(6 hours),
+            ten_delta: getDelta(10, currentPrice),
+            twenty_five_delta: getDelta(25, currentPrice),
+            fifty_delta: getDelta(50, currentPrice)
+        });
+        Expiry memory twelve = Expiry({
+            expiry: start+(12 hours),
+            ten_delta: getDelta(10, currentPrice),
+            twenty_five_delta: getDelta(25, currentPrice),
+            fifty_delta: getDelta(50, currentPrice)
+        });
+        Expiry memory twenty_four = Expiry({
+            expiry: start+(24 hours),
+            ten_delta: getDelta(10, currentPrice),
+            twenty_five_delta: getDelta(25, currentPrice),
+            fifty_delta: getDelta(50, currentPrice)
+        });
+
+        currentEpoch = Epoch({
+            startTime: start,
+            expire6: six,
+            expire12: twelve,
+            expire24: twenty_four,
+            referencePrice: currentPrice
+        });
+    }
     // TODO: Protect function, make onlyOwner
     // TODO: expiredITM arg should be oracle?
     function resolveOption(uint256 expiry, uint256 strike, bool isCall, bool expiredITM) onlyOwner public {
+        // Check Option is in Epoch 
         require(
             expiry < block.timestamp,
             "Option has not expire yet"
@@ -55,6 +146,7 @@ contract Optino is Ownable {
     }
 
     function buyOption(uint256 expiry, uint256 strike, uint256 amount, bool isCall) public {
+        // Check Option is in Epoch
         // Check if Maximum Contracts purchased would be exceeded
         require(
             amount <= maxContractsAvailable(),

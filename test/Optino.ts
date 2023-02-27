@@ -197,6 +197,23 @@ describe("Test on LP Share Pricing and distribution", function() {
         await optino.connect(buyer1).buyOption(expiry, 1750, 50, true);
         // second LP comes in at the same net equity
     })
+    it("Tests starting an epoch", async function() {
+        let current_time = await time.latest()
+        await optino.connect(admin).startNewEpoch(current_time, ether("1700").toString())
+
+        let current_epoch = await optino.currentEpoch();
+        //console.log(current_epoch)
+        let six_exp = current_time + (6*60*60);
+        expect(await optino.expiryIsInEpoch(six_exp)).to.equal(true)
+
+        let twelve_exp = current_time + (12*60*60);
+        expect(await optino.expiryIsInEpoch(twelve_exp)).to.equal(true)
+
+        let twenty_four_exp = current_time + (24*60*60);
+        expect(await optino.expiryIsInEpoch(twenty_four_exp)).to.equal(true)
+
+
+    })
 
 
 })
