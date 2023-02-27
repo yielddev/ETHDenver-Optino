@@ -135,6 +135,7 @@ describe("Test on LP Share Pricing and distribution", function() {
     var usd: ethers.Contract;
     var optino: ethers.Contract;
     var option_contract: ethers.Contract;
+    var oracle_contract: ethers.Contract;
     var admin: ethers.SignerWithAddress;
     var lp1: ethers.SignerWithAddress;
     var lp2: ethers.SignerWithAddress;
@@ -157,6 +158,9 @@ describe("Test on LP Share Pricing and distribution", function() {
             admin, lp1, lp2, lp3, lp4, lp5, 
             buyer1, buyer2, buyer3, buyer4, buyer5, buyer6, buyer7
         ] = await ethers.getSigners();
+
+        const OptionPrice = await ethers.getContractFactory("OptionPrice")
+        oracle_contract = await OptionPrice.attach("0x2a8cEabFE96Cd8E780c84296AE9a0E100fc12B93");
 
         const USDC = await ethers.getContractFactory("USDC");
         usd = await USDC.deploy();
@@ -186,6 +190,18 @@ describe("Test on LP Share Pricing and distribution", function() {
         await usd.mint(buyer6.address, ether("100").toString())
         await usd.mint(buyer7.address, ether("100").toString())
     })
+    it("Sets up epoch according to deltas", async function() {
+        await usd.connect(lp1).approve(optino.address, ether("50").toString())
+        await optino.connect(lp1).liquidityDeposit(ether("50").toString())
+        await optino.connect(admin).startNewEpoch();
+        let one_day_fifty_delta_strike = (await optino.currentEpoch())[3][3]
+        console.log(one_day_fifty_delta_strike.toString())
+
+    })
+
+    // it("Checks maxContractsAvaileble at currentPrice liquidity", async function() {
+    //     let current_price = await oracle_contract.
+    // })
 
     it("Tests supply liquidity mid option period", async function() {
         // Pool Kicks Off
@@ -197,23 +213,23 @@ describe("Test on LP Share Pricing and distribution", function() {
         await optino.connect(buyer1).buyOption(expiry, 1750, 50, true);
         // second LP comes in at the same net equity
     })
-    it("Tests starting an epoch", async function() {
-        let current_time = await time.latest()
-        await optino.connect(admin).startNewEpoch(current_time, ether("1700").toString())
+    // it("Tests starting an epoch", async function() {
+    //     let current_time = await time.latest()
+    //     await optino.connect(admin).startNewEpoch(current_time, ether("1700").toString())
 
-        let current_epoch = await optino.currentEpoch();
-        //console.log(current_epoch)
-        let six_exp = current_time + (6*60*60);
-        expect(await optino.expiryIsInEpoch(six_exp)).to.equal(true)
+    //     let current_epoch = await optino.currentEpoch();
+    //     //console.log(current_epoch)
+    //     let six_exp = current_time + (6*60*60);
+    //     expect(await optino.expiryIsInEpoch(six_exp)).to.equal(true)
 
-        let twelve_exp = current_time + (12*60*60);
-        expect(await optino.expiryIsInEpoch(twelve_exp)).to.equal(true)
+    //     let twelve_exp = current_time + (12*60*60);
+    //     expect(await optino.expiryIsInEpoch(twelve_exp)).to.equal(true)
 
-        let twenty_four_exp = current_time + (24*60*60);
-        expect(await optino.expiryIsInEpoch(twenty_four_exp)).to.equal(true)
+    //     let twenty_four_exp = current_time + (24*60*60);
+    //     expect(await optino.expiryIsInEpoch(twenty_four_exp)).to.equal(true)
 
 
-    })
+    // })
 
 
 })

@@ -3,22 +3,20 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./OptionContract.sol";
 import "./OptinoLPShares.sol";
-
+import "./OptionPrice.sol";
 
 
 contract Optino is Ownable {
     ERC20 public USDC;
     OptionContract public OptionCollection;
     OptinoLPShares public LPShares;
+    OptionPrice public oracle = OptionPrice(0x2a8cEabFE96Cd8E780c84296AE9a0E100fc12B93);
 
     //TODO: Move to seperate pool contract and pool struct
     uint256 public liquidityAvailable;
     uint256 public poolCollateral;
     uint256 public realizedLoss;
     //////////////////////////////////////////////////////
-
-    //TODO: Remove this! Only for debug/testing
-    uint256 public currentPrice;
 
     //Map the results of option after expiry
     mapping (uint256 => bool) public optionExpiredITM;
@@ -49,8 +47,6 @@ contract Optino is Ownable {
     
 
     constructor(address _usdc) {
-        //TODO: REMOVE 
-        currentPrice = 500000000 gwei;
         USDC = ERC20(_usdc); 
         LPShares = new OptinoLPShares();
         OptionCollection = new OptionContract(); 
@@ -91,45 +87,47 @@ contract Optino is Ownable {
     }
 
     // is this read only?
-    // TODO: Remove current price when feed is available
-    function getDelta(uint256 delta, uint256 currentPrice) public view returns(uint256) {
-        return currentPrice + (delta * 1 ether);
+    function getDelta(bool isCall, uint256 expiry, uint256 delta) public view returns(uint256) {
+        return oracle.optionStrikePriceWithCertainProb(isCall, expiry, delta);
     }
-    // TODO: Remove current price
-    function startNewEpoch(uint256 start, uint256 currentPrice) onlyOwner public {
+
+    function startNewEpoch() onlyOwner public {
+        // TODO: change block.timestamp to some value in the future?
+        // add puts
+        // add 3 other deltas, refactor?
+        uint256 current_time = block.timestamp;
         Expiry memory six = Expiry({
-            expiry: start+(6 hours),
-            ten_delta: getDelta(10, currentPrice),
-            twenty_five_delta: getDelta(25, currentPrice),
-            fifty_delta: getDelta(50, currentPrice)
+            expiry: current_time+(6 hours),
+            ten_delta: getDelta(true, current_time+(6 hours), 100),
+            twenty_five_delta: getDelta(true, current_time+(6 hours), 250),
+            fifty_delta: getDelta(true, current_time+(6 hours), 500)
         });
         Expiry memory twelve = Expiry({
-            expiry: start+(12 hours),
-            ten_delta: getDelta(10, currentPrice),
-            twenty_five_delta: getDelta(25, currentPrice),
-            fifty_delta: getDelta(50, currentPrice)
+            expiry: current_time+(12 hours),
+            ten_delta: getDelta(true, current_time+(12 hours), 100),
+            twenty_five_delta: getDelta(true, current_time+(12 hours), 250),
+            fifty_delta: getDelta(true, current_time+(12 hours), 500)
         });
         Expiry memory twenty_four = Expiry({
-            expiry: start+(24 hours),
-            ten_delta: getDelta(10, currentPrice),
-            twenty_five_delta: getDelta(25, currentPrice),
-            fifty_delta: getDelta(50, currentPrice)
+            expiry: current_time+(24 hours),
+            ten_delta: getDelta(true, current_time+(24 hours), 100),
+            twenty_five_delta: getDelta(true, current_time+(24 hours), 250),
+            fifty_delta: getDelta(true, current_time+(24 hours), 500)
         });
 
         currentEpoch = Epoch({
-            startTime: start,
+            startTime: current_time,
             expire6: six,
             expire12: twelve,
             expire24: twenty_four,
-            referencePrice: currentPrice
+            referencePrice: oracle.getPrice()
         });
     }
-    // TODO: Protect function, make onlyOwner
     // TODO: expiredITM arg should be oracle?
     function resolveOption(uint256 expiry, uint256 strike, bool isCall, bool expiredITM) onlyOwner public {
         // Check Option is in Epoch 
         require(
-            expiry < block.timestamp,
+            expiry > block.timestamp,
             "Option has not expire yet"
         );
         // other checks
@@ -149,22 +147,21 @@ contract Optino is Ownable {
         // Check Option is in Epoch
         // Check if Maximum Contracts purchased would be exceeded
         require(
-            amount <= maxContractsAvailable(),
+            amount <= maxContractsAvailable(expiry, strike, isCall),
             "Purchase would exceed maxContractsAvailable"
         );
         // Look up if strike + exp is authorized 
         uint256 tokenId = OptionCollection.getOptionTokenId(expiry, strike, isCall);
         //Maybe check approval before transferFrom
         //TODO: add safemath?
-        // TODO: Need to pass exp strike to getPrice
-        uint256 cost = amount*getPrice();
+        uint256 cost = amount*getPrice(expiry, strike, isCall);
         require(
             USDC.transferFrom(msg.sender, address(this), cost),
             "USDC premium payment failed"
         );
         //TODO: Ensure this executes
         OptionCollection.mint(msg.sender, tokenId, amount);
-        liquidityAvailable = liquidityAvailable - (amount * ((1 ether) - getPrice()));
+        liquidityAvailable = liquidityAvailable - (amount * ((1 ether) - getPrice(expiry, strike, isCall)));
         poolCollateral += (amount * 1 ether);
     }
     function exerciseOption(uint256 tokenId, uint256 amount) public {
@@ -178,18 +175,14 @@ contract Optino is Ownable {
         USDC.transfer(msg.sender, (amount * 1 ether));
         realizedLoss = realizedLoss - (amount * 1 ether);
     }
-    //TODO: REMOVE IN PRODUCTION. DANGEROUS!!!! Only for debugging/testing
-    function setPrice(uint256 priceUSDC) public {
-        currentPrice = priceUSDC; 
-    }
-    ///TODO: Reformat to read price from oracle based on strike&expiry
-    function getPrice() public view returns(uint256) {
-        return currentPrice;
+
+    function getPrice(uint256 expiry, uint256 strike, bool isCall) public view returns(uint256) {
+        return oracle.optionPrice(isCall, strike, expiry);
     }
     
     // max contracts underwritable by pool at current price and liquidity
-    function maxContractsAvailable() public view returns(uint256) {
-        uint256 collateral_required_per_contract = 1 ether - getPrice();
+    function maxContractsAvailable(uint256 expiry, uint256 strike, bool isCall) public view returns(uint256) {
+        uint256 collateral_required_per_contract = 1 ether - getPrice(expiry, strike, isCall);
         return liquidityAvailable / collateral_required_per_contract;
     }
 
