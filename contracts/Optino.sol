@@ -1,4 +1,6 @@
 pragma solidity ^0.8.9; 
+pragma experimental ABIEncoderV2;
+
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./OptionContract.sol";
@@ -11,18 +13,17 @@ contract Optino is Ownable {
     OptionContract public OptionCollection;
     OptinoLPShares public LPShares;
     OptionPrice public oracle = OptionPrice(0x2a8cEabFE96Cd8E780c84296AE9a0E100fc12B93);
+    Expiry[3] public calls;
+    Expiry[3] public puts;
 
-    //TODO: Move to seperate pool contract and pool struct
     uint256 public liquidityAvailable;
     uint256 public poolCollateral;
     uint256 public realizedLoss;
-    //////////////////////////////////////////////////////
 
     //Map the results of option after expiry
     mapping (uint256 => bool) public optionExpiredITM;
 
 
-    // EPOCH 
     // EPOCH Rolls over at end of longest Period
     // 6 hrs 
     // 12 hrs
@@ -36,9 +37,11 @@ contract Optino is Ownable {
 
     struct Epoch {
         uint256 startTime;
-        Expiry expire6;
-        Expiry expire12;
-        Expiry expire24;
+        uint256 endTime;
+        bool isResolved;
+        // Expiry expire6;
+        // Expiry expire12;
+        // Expiry expire24;
         uint256 referencePrice;
     }
 
@@ -46,40 +49,73 @@ contract Optino is Ownable {
 
     
 
-    constructor(address _usdc) {
+    constructor(address _usdc, uint256 startTime) {
         USDC = ERC20(_usdc); 
         LPShares = new OptinoLPShares();
         OptionCollection = new OptionContract(); 
+        currentEpoch = Epoch({
+            startTime: 0,
+            endTime: 0,
+            isResolved: true,
+            referencePrice: 0
+        });
+        startNewEpoch(startTime);  
     }
 
-
-    function expiryIsInEpoch(uint256 expiry) public view returns(bool) {
-        if (
-            expiry == currentEpoch.expire6.expiry || 
-            expiry == currentEpoch.expire12.expiry || 
-            expiry == currentEpoch.expire24.expiry
-        ) {
-            return true;
+    function expiryIsInEpoch(uint256 expiry, bool isCall) public view returns(bool) {
+        if (isCall) {
+            for (uint i; i < calls.length; i++) {
+                if (calls[i].expiry == expiry) {
+                    return true;
+                }
+            }
+            return false;
         } else {
+            for (uint i; i < puts.length; i++) {
+                if (puts[i].expiry == expiry) {
+                    return true;
+                }
+            }
             return false;
         }
     }
 
     // Rewrite to use recalculation of strike based on exp and starttime
-    function strikeIsInEpoch(uint256 strike) public view returns(bool) {
-        if (
-            strike == currentEpoch.expire6.ten_delta ||
-            strike == currentEpoch.expire6.twenty_five_delta ||
-            strike == currentEpoch.expire6.fifty_delta
-        ) {
-            return true;
+    function strikeIsInEpoch(uint256 strike, uint256 expiry, bool isCall) public view returns(bool) {
+        if (isCall) {
+            for (uint i; i < calls.length; i++) {
+                if (calls[i].expiry == expiry) {
+                    if (
+                        strike == calls[i].ten_delta ||
+                        strike == calls[i].twenty_five_delta ||
+                        strike == calls[i].fifty_delta
+                    ) {
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            }
         } else {
-            return false;
+            for (uint i; i < puts.length; i++) {
+                if (puts[i].expiry == expiry) {
+                    if (
+                        strike == puts[i].ten_delta ||
+                        strike == puts[i].twenty_five_delta ||
+                        strike == puts[i].fifty_delta
+                    ) {
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            }
         }
+        return false;
     }
 
-    function isOptionValidInEpoch(uint256 strike, uint256 expiry) public view returns(bool) {
-        if (expiryIsInEpoch(expiry) && strikeIsInEpoch(strike)) {
+    function isOptionValidInEpoch(uint256 strike, uint256 expiry, bool isCall) public view returns(bool) {
+        if (expiryIsInEpoch(expiry, isCall) && strikeIsInEpoch(strike, expiry, isCall)) {
             return true;
         } else {
             return false;
@@ -96,36 +132,65 @@ contract Optino is Ownable {
         // add puts
         // add 3 other deltas, refactor?
         // uint256 current_time = block.timestamp;
-        Expiry memory six = Expiry({
-            expiry: startTime+(6 hours),
-            ten_delta: getDelta(true, startTime+(6 hours), 100),
-            twenty_five_delta: getDelta(true, startTime+(6 hours), 250),
-            fifty_delta: getDelta(true, startTime+(6 hours), 500)
-        });
-        Expiry memory twelve = Expiry({
-            expiry: startTime+(12 hours),
-            ten_delta: getDelta(true, startTime+(12 hours), 100),
-            twenty_five_delta: getDelta(true, startTime+(12 hours), 250),
-            fifty_delta: getDelta(true, startTime+(12 hours), 500)
-        });
-        Expiry memory twenty_four = Expiry({
-            expiry: startTime+(24 hours),
-            ten_delta: getDelta(true, startTime+(24 hours), 100),
-            twenty_five_delta: getDelta(true, startTime+(24 hours), 250),
-            fifty_delta: getDelta(true, startTime+(24 hours), 500)
-        });
-
+        require(
+            currentEpoch.isResolved,
+            "CurrentEpoch not resolved"
+        );
         currentEpoch = Epoch({
             startTime: startTime,
-            expire6: six,
-            expire12: twelve,
-            expire24: twenty_four,
+            endTime: startTime+(24 hours),
+            isResolved: false,
             referencePrice: oracle.getPrice()
         });
+        calls[0] = Expiry({
+                    expiry: startTime+(6 hours),
+                    ten_delta: getDelta(true, startTime+(6 hours), 100),
+                    twenty_five_delta: getDelta(true, startTime+(6 hours), 250),
+                    fifty_delta: getDelta(true, startTime+(6 hours), 500)
+        });
+        calls[1] = Expiry({
+                    expiry: startTime+(12 hours),
+                    ten_delta: getDelta(true, startTime+(12 hours), 100),
+                    twenty_five_delta: getDelta(true, startTime+(12 hours), 250),
+                    fifty_delta: getDelta(true, startTime+(12 hours), 500)
+        });
+        calls[2] = Expiry({
+                    expiry: startTime+(24 hours),
+                    ten_delta: getDelta(true, startTime+(24 hours), 100),
+                    twenty_five_delta: getDelta(true, startTime+(24 hours), 250),
+                    fifty_delta: getDelta(true, startTime+(24 hours), 500)
+        });
+
+        puts[0] =  Expiry({
+                    expiry: startTime+(6 hours),
+                    ten_delta: getDelta(false, startTime+(6 hours), 100),
+                    twenty_five_delta: getDelta(false, startTime+(6 hours), 250),
+                    fifty_delta: getDelta(false, startTime+(6 hours), 500)
+        });
+
+        puts[1] = Expiry({
+                    expiry: startTime+(12 hours),
+                    ten_delta: getDelta(false, startTime+(12 hours), 100),
+                    twenty_five_delta: getDelta(false, startTime+(12 hours), 250),
+                    fifty_delta: getDelta(false, startTime+(12 hours), 500)
+        });
+
+        puts[2] = Expiry({
+                    expiry: startTime+(24 hours),
+                    ten_delta: getDelta(false, startTime+(24 hours), 100),
+                    twenty_five_delta: getDelta(false, startTime+(24 hours), 250),
+                    fifty_delta: getDelta(false, startTime+(24 hours), 500)
+        });
+                
+        
     }
     // TODO: expiredITM arg should be oracle?
     function resolveOption(uint256 expiry, uint256 strike, bool isCall, bool expiredITM) onlyOwner public {
-        // TODO: Check Option is in Epoch 
+        // Checks Option is in Epoch 
+        require(
+            isOptionValidInEpoch(strike, expiry, isCall),
+            "Option not Valid in this Epoch"
+        );
         require(
             expiry < block.timestamp,
             "Option has not expire yet"
@@ -144,7 +209,11 @@ contract Optino is Ownable {
     }
 
     function buyOption(uint256 expiry, uint256 strike, uint256 amount, bool isCall) public {
-        // Check Option is in Epoch
+        // Checks Option is in Epoch
+        require(
+            isOptionValidInEpoch(strike, expiry, isCall),
+            "Option not valid in this Epoch"
+        );
         require(
             expiry > block.timestamp,
             "Option Already Expired"
@@ -154,7 +223,6 @@ contract Optino is Ownable {
             amount <= maxContractsAvailable(expiry, strike, isCall),
             "Purchase would exceed maxContractsAvailable"
         );
-        // Look up if strike + exp is authorized 
         uint256 tokenId = OptionCollection.getOptionTokenId(expiry, strike, isCall);
         //Maybe check approval before transferFrom
         //TODO: add safemath?
@@ -172,7 +240,7 @@ contract Optino is Ownable {
         // Move these checks to seperate function? 
         require(
             optionExpiredITM[tokenId] == true,
-            "Option is out of the money"
+            "Option expired out of the money"
         );
         
         OptionCollection.burn(msg.sender, tokenId, amount);
@@ -187,78 +255,64 @@ contract Optino is Ownable {
     // max contracts underwritable by pool at current price and liquidity
     function maxContractsAvailable(uint256 expiry, uint256 strike, bool isCall) public view returns(uint256) {
         uint256 collateral_required_per_contract = 1 ether - getPrice(expiry, strike, isCall);
+        // Check Precision of division here
         return liquidityAvailable / collateral_required_per_contract;
     }
 
-    // This implementation seems dumb and bad probably inefficient.
-    function LPValue6Call(bool isCall) public view returns(uint256) {
-        uint256 expiry6 = currentEpoch.expire6.expiry;
-        uint256 expiry12 = currentEpoch.expire12.expiry;
-        uint256 expiry24 = currentEpoch.expire24.expiry;
-        uint256 six_ten_value = (1 ether - getPrice(
-            expiry6,
-            currentEpoch.expire6.ten_delta,
-            isCall)) * OptionCollection.totalSupply(
-                OptionCollection.getOptionTokenId(
-                    expiry6, currentEpoch.expire6.ten_delta, isCall
-                ));
-        uint256 six_twenty_five_value = (1 ether - getPrice(
-            expiry6,
-            currentEpoch.expire6.twenty_five_delta,
-            isCall)) * OptionCollection.totalSupply(
-                OptionCollection.getOptionTokenId(
-                    expiry6, currentEpoch.expire6.twenty_five_delta, isCall
-                ));
-        uint256 six_fifty_value = 
-            (1 ether - getPrice(expiry6, currentEpoch.expire6.fifty_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
-            expiry6, currentEpoch.expire6.fifty_delta, isCall
-            ));
+    
+    function navByStrike(uint256 expiry, uint256 strike, bool isCall) public view returns(uint256) {
+        uint256 netValue = (
+            1 ether - getPrice(expiry, strike, isCall)
+        ) * OptionCollection.totalSupply(
+            OptionCollection.getOptionTokenId(
+                expiry, strike, isCall 
+            )
+        );
+        return netValue;
+    }
+    // function netValueOfOutstandingOptionsByExpiry(Expiry memory expiry, bool isCall) public view returns(uint256) {
+    //     uint256 expire_time = expiry.expiry;
+    //     return navByStrike(expire_time, expiry.ten_delta, isCall) + navByStrike(expire_time, expiry.twenty_five_delta, isCall) +navByStrike(expire_time, expiry.fifty_delta, isCall);
+    //     
+    // }
 
-        return six_ten_value + six_twenty_five_value + six_fifty_value;
+    function LPValueOfCalls() public view returns(uint256) {
+        uint256 netValue = 0;
+        for (uint i; i < calls.length; i++) {
+            //Expiry memory this_expiry = currentEpoch.calls[i];
+            netValue = netValue + (
+                navByStrike(
+                    calls[i].expiry, calls[i].ten_delta, true
+                ) + navByStrike(
+                    calls[i].expiry, calls[i].twenty_five_delta, true
+                ) + navByStrike(
+                    calls[i].expiry, calls[i].fifty_delta, true
+                )
+            );
+        }
+        return netValue;
     }
 
-    function LPValue12Call(bool isCall) public view returns(uint256) {
-        uint256 expiry6 = currentEpoch.expire6.expiry;
-        uint256 expiry12 = currentEpoch.expire12.expiry;
-        uint256 expiry24 = currentEpoch.expire24.expiry;
-        uint256 twelve_ten_value = 
-            (1 ether - getPrice(expiry12, currentEpoch.expire12.ten_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
-            expiry12, currentEpoch.expire12.ten_delta, isCall
-        ));
-        uint256 twelve_twenty_five_value = 
-            (1 ether - getPrice(expiry12, currentEpoch.expire12.twenty_five_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
-            expiry12, currentEpoch.expire12.twenty_five_delta, isCall
-        ));
-        uint256 twelve_fifty_value = 
-            (1 ether - getPrice(expiry12, currentEpoch.expire12.fifty_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
-            expiry12, currentEpoch.expire12.fifty_delta, isCall
-        ));
-
-        return twelve_ten_value + twelve_twenty_five_value + twelve_fifty_value;
-
+    function LPValueOfPuts() public view returns(uint256) {
+        uint256 netValue = 0;
+        for (uint i; i < puts.length; i++) {
+            // Expiry memory this_expiry = currentEpoch.puts[i];
+            netValue = netValue + (
+                navByStrike(
+                    puts[i].expiry, puts[i].ten_delta, true
+                ) + navByStrike(
+                    puts[i].expiry, puts[i].twenty_five_delta, true
+                ) + navByStrike(
+                    puts[i].expiry, puts[i].fifty_delta, true
+                )
+            );
+        }
+        return netValue;
     }
-    function LPValue24Call(bool isCall) public view returns(uint256) {
-        uint256 expiry6 = currentEpoch.expire6.expiry;
-        uint256 expiry12 = currentEpoch.expire12.expiry;
-        uint256 expiry24 = currentEpoch.expire24.expiry;
-        uint256 twenty_four_ten_value = 
-            (1 ether - getPrice(expiry24, currentEpoch.expire24.ten_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
-            expiry24, currentEpoch.expire24.ten_delta, isCall
-        ));
-        uint256 twenty_four_twenty_five_value = 
-            (1 ether - getPrice(expiry24, currentEpoch.expire24.twenty_five_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
-            expiry24, currentEpoch.expire24.twenty_five_delta, isCall
-        ));
-        uint256 twenty_four_fifty_value = 
-            (1 ether - getPrice(expiry24, currentEpoch.expire24.fifty_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
-            expiry24, currentEpoch.expire24.fifty_delta, isCall
-        ));
 
-        return twenty_four_ten_value + twenty_four_twenty_five_value + twenty_four_fifty_value;
-    }
     function LPValueOfOptions() public view returns(uint256){
         // Add current (1 - currentPrice) * total supply of outstanding options
-        return LPValue6Call(true) + LPValue12Call(true) + LPValue24Call(true);
+        return LPValueOfCalls() + LPValueOfPuts(); 
     }
 
     function LPEquity() public returns(uint256) {

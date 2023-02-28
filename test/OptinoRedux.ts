@@ -46,7 +46,7 @@ describe("Test Complete Flow", function() {
         usd = await USDC.deploy();
 
         const Optino = await ethers.getContractFactory("Optino")
-        optino = await Optino.deploy(usd.address)
+        optino = await Optino.deploy(usd.address, startTime)
 
         const OptionContract = await ethers.getContractFactory("OptionContract")
         const option_contract_address = await optino.OptionCollection();
@@ -70,13 +70,13 @@ describe("Test Complete Flow", function() {
         await usd.mint(buyer6.address, ether("100").toString())
         await usd.mint(buyer7.address, ether("100").toString())
     }) 
-    it("Sets up Epoch", async function() {
-        await usd.connect(lp1).approve(optino.address, ether("50").toString())
-        await optino.connect(admin).startNewEpoch(startTime);
-        await optino.connect(lp1).liquidityDeposit(ether("50").toString())
-        let one_day_fifty_delta_strike = (await optino.currentEpoch())[3][3]
-        console.log(one_day_fifty_delta_strike.toString())
-    })
+    // it("Sets up Epoch", async function() {
+    //     await usd.connect(lp1).approve(optino.address, ether("50").toString())
+    //     await optino.connect(admin).startNewEpoch(startTime);
+    //     await optino.connect(lp1).liquidityDeposit(ether("50").toString())
+    //     let one_day_fifty_delta_strike = (await optino.currentEpoch())[3][3]
+    //     console.log(one_day_fifty_delta_strike.toString())
+    // })
     
     describe("With Epoch Set and liquidity seeded", function() {
         const getOptions = function(expiry: any) {
@@ -88,18 +88,18 @@ describe("Test Complete Flow", function() {
             }
         }
         const getEpochOptions = async function() {
-            let epoch = await optino.currentEpoch()
+            // let epoch = await optino.calls(1)
             return {
-                six_hours: getOptions(epoch[1]),
-                twelve_hours: getOptions(epoch[2]),
-                twenty_four_hours: getOptions(epoch[3])
+                six_hours: getOptions((await optino.calls(0))),
+                twelve_hours: getOptions((await optino.calls(1))),
+                twenty_four_hours: getOptions((await optino.calls(2)))
             }
         }
         var all_options;
         var one_day_expiry: any;
         var purchased_strike: any;
         beforeEach(async function() {
-            await optino.connect(admin).startNewEpoch(startTime);
+            // await optino.connect(admin).startNewEpoch(startTime);
             await usd.connect(lp1).approve(optino.address, ether("50").toString())
             await optino.connect(lp1).liquidityDeposit(ether("50").toString())
         })
@@ -125,8 +125,14 @@ describe("Test Complete Flow", function() {
             var liquidityPoolDelta: any;
             var liquidityPoolStart: any;
             beforeEach(async function() {
+                
+                all_options = await getEpochOptions()
+                one_day_expiry = all_options.twenty_four_hours.expiry;
+                purchased_strike = all_options.twenty_four_hours.twenty_five_delta;
+
                 liquidityPoolStart = await optino.liquidityAvailable();
                 await usd.connect(buyer1).approve(optino.address, ether("50").toString())
+                console.log(one_day_expiry, purchased_strike)
                 await optino.connect(buyer1).buyOption(one_day_expiry, purchased_strike, 10, true)
 
                 let price = await optino.connect(buyer1).getPrice(one_day_expiry, purchased_strike, true)
