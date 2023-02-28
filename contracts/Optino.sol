@@ -91,32 +91,32 @@ contract Optino is Ownable {
         return oracle.optionStrikePriceWithCertainProb(isCall, expiry, delta);
     }
 
-    function startNewEpoch() onlyOwner public {
+    function startNewEpoch(uint256 startTime) onlyOwner public {
         // TODO: change block.timestamp to some value in the future?
         // add puts
         // add 3 other deltas, refactor?
-        uint256 current_time = block.timestamp;
+        // uint256 current_time = block.timestamp;
         Expiry memory six = Expiry({
-            expiry: current_time+(6 hours),
-            ten_delta: getDelta(true, current_time+(6 hours), 100),
-            twenty_five_delta: getDelta(true, current_time+(6 hours), 250),
-            fifty_delta: getDelta(true, current_time+(6 hours), 500)
+            expiry: startTime+(6 hours),
+            ten_delta: getDelta(true, startTime+(6 hours), 100),
+            twenty_five_delta: getDelta(true, startTime+(6 hours), 250),
+            fifty_delta: getDelta(true, startTime+(6 hours), 500)
         });
         Expiry memory twelve = Expiry({
-            expiry: current_time+(12 hours),
-            ten_delta: getDelta(true, current_time+(12 hours), 100),
-            twenty_five_delta: getDelta(true, current_time+(12 hours), 250),
-            fifty_delta: getDelta(true, current_time+(12 hours), 500)
+            expiry: startTime+(12 hours),
+            ten_delta: getDelta(true, startTime+(12 hours), 100),
+            twenty_five_delta: getDelta(true, startTime+(12 hours), 250),
+            fifty_delta: getDelta(true, startTime+(12 hours), 500)
         });
         Expiry memory twenty_four = Expiry({
-            expiry: current_time+(24 hours),
-            ten_delta: getDelta(true, current_time+(24 hours), 100),
-            twenty_five_delta: getDelta(true, current_time+(24 hours), 250),
-            fifty_delta: getDelta(true, current_time+(24 hours), 500)
+            expiry: startTime+(24 hours),
+            ten_delta: getDelta(true, startTime+(24 hours), 100),
+            twenty_five_delta: getDelta(true, startTime+(24 hours), 250),
+            fifty_delta: getDelta(true, startTime+(24 hours), 500)
         });
 
         currentEpoch = Epoch({
-            startTime: current_time,
+            startTime: startTime,
             expire6: six,
             expire12: twelve,
             expire24: twenty_four,
@@ -125,9 +125,9 @@ contract Optino is Ownable {
     }
     // TODO: expiredITM arg should be oracle?
     function resolveOption(uint256 expiry, uint256 strike, bool isCall, bool expiredITM) onlyOwner public {
-        // Check Option is in Epoch 
+        // TODO: Check Option is in Epoch 
         require(
-            expiry > block.timestamp,
+            expiry < block.timestamp,
             "Option has not expire yet"
         );
         // other checks
@@ -145,6 +145,10 @@ contract Optino is Ownable {
 
     function buyOption(uint256 expiry, uint256 strike, uint256 amount, bool isCall) public {
         // Check Option is in Epoch
+        require(
+            expiry > block.timestamp,
+            "Option Already Expired"
+        );
         // Check if Maximum Contracts purchased would be exceeded
         require(
             amount <= maxContractsAvailable(expiry, strike, isCall),
@@ -177,7 +181,7 @@ contract Optino is Ownable {
     }
 
     function getPrice(uint256 expiry, uint256 strike, bool isCall) public view returns(uint256) {
-        return oracle.optionPrice(isCall, strike, expiry);
+        return (oracle.optionPrice(isCall, strike, expiry) * 1 ether) / 100;
     }
     
     // max contracts underwritable by pool at current price and liquidity
@@ -186,13 +190,84 @@ contract Optino is Ownable {
         return liquidityAvailable / collateral_required_per_contract;
     }
 
-    function LPEquity() public view returns(uint256){
+    // This implementation seems dumb and bad probably inefficient.
+    function LPValue6Call(bool isCall) public view returns(uint256) {
+        uint256 expiry6 = currentEpoch.expire6.expiry;
+        uint256 expiry12 = currentEpoch.expire12.expiry;
+        uint256 expiry24 = currentEpoch.expire24.expiry;
+        uint256 six_ten_value = (1 ether - getPrice(
+            expiry6,
+            currentEpoch.expire6.ten_delta,
+            isCall)) * OptionCollection.totalSupply(
+                OptionCollection.getOptionTokenId(
+                    expiry6, currentEpoch.expire6.ten_delta, isCall
+                ));
+        uint256 six_twenty_five_value = (1 ether - getPrice(
+            expiry6,
+            currentEpoch.expire6.twenty_five_delta,
+            isCall)) * OptionCollection.totalSupply(
+                OptionCollection.getOptionTokenId(
+                    expiry6, currentEpoch.expire6.twenty_five_delta, isCall
+                ));
+        uint256 six_fifty_value = 
+            (1 ether - getPrice(expiry6, currentEpoch.expire6.fifty_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
+            expiry6, currentEpoch.expire6.fifty_delta, isCall
+            ));
+
+        return six_ten_value + six_twenty_five_value + six_fifty_value;
+    }
+
+    function LPValue12Call(bool isCall) public view returns(uint256) {
+        uint256 expiry6 = currentEpoch.expire6.expiry;
+        uint256 expiry12 = currentEpoch.expire12.expiry;
+        uint256 expiry24 = currentEpoch.expire24.expiry;
+        uint256 twelve_ten_value = 
+            (1 ether - getPrice(expiry12, currentEpoch.expire12.ten_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
+            expiry12, currentEpoch.expire12.ten_delta, isCall
+        ));
+        uint256 twelve_twenty_five_value = 
+            (1 ether - getPrice(expiry12, currentEpoch.expire12.twenty_five_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
+            expiry12, currentEpoch.expire12.twenty_five_delta, isCall
+        ));
+        uint256 twelve_fifty_value = 
+            (1 ether - getPrice(expiry12, currentEpoch.expire12.fifty_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
+            expiry12, currentEpoch.expire12.fifty_delta, isCall
+        ));
+
+        return twelve_ten_value + twelve_twenty_five_value + twelve_fifty_value;
+
+    }
+    function LPValue24Call(bool isCall) public view returns(uint256) {
+        uint256 expiry6 = currentEpoch.expire6.expiry;
+        uint256 expiry12 = currentEpoch.expire12.expiry;
+        uint256 expiry24 = currentEpoch.expire24.expiry;
+        uint256 twenty_four_ten_value = 
+            (1 ether - getPrice(expiry24, currentEpoch.expire24.ten_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
+            expiry24, currentEpoch.expire24.ten_delta, isCall
+        ));
+        uint256 twenty_four_twenty_five_value = 
+            (1 ether - getPrice(expiry24, currentEpoch.expire24.twenty_five_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
+            expiry24, currentEpoch.expire24.twenty_five_delta, isCall
+        ));
+        uint256 twenty_four_fifty_value = 
+            (1 ether - getPrice(expiry24, currentEpoch.expire24.fifty_delta, isCall)) * OptionCollection.totalSupply(OptionCollection.getOptionTokenId(
+            expiry24, currentEpoch.expire24.fifty_delta, isCall
+        ));
+
+        return twenty_four_ten_value + twenty_four_twenty_five_value + twenty_four_fifty_value;
+    }
+    function LPValueOfOptions() public view returns(uint256){
         // Add current (1 - currentPrice) * total supply of outstanding options
-        return liquidityAvailable;
+        return LPValue6Call(true) + LPValue12Call(true) + LPValue24Call(true);
+    }
+
+    function LPEquity() public returns(uint256) {
+        return LPValueOfOptions() + liquidityAvailable;
     }
         
     function liquidityDeposit(uint256 amount) public {
         // TODO: implement LP shares, and shares/amount calculation
+
         uint256 currentLPEquity = LPEquity();
         uint256 outstandingShares = LPShares.totalSupply();
         // Add precision for Floating Point
@@ -209,5 +284,23 @@ contract Optino is Ownable {
         );
         LPShares.mint(msg.sender, amount);
         liquidityAvailable += amount;
+    }
+
+    function liquidityWithdraw(uint256 amount) public {
+        
+        uint256 currentLPEquity = LPEquity();
+        uint256 outstandingShares = LPShares.totalSupply();
+
+        // Add precision
+        uint256 equityPerShare = currentLPEquity / outstandingShares;
+        uint256 distribution = amount * equityPerShare;
+        
+        LPShares.burnFrom(msg.sender, amount);
+        require(
+            USDC.transfer(msg.sender, distribution),
+            "USD: Distribution Transfer Fails"
+        );
+
+        liquidityAvailable = liquidityAvailable - distribution;
     }
 }

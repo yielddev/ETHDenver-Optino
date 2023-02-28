@@ -27,10 +27,13 @@ describe("Test Complete Flow", function() {
     var buyer6: ethers.SignerWithAddress;
     var buyer7: ethers.SignerWithAddress;
     var expiry: number
+    var startTime: number
     var lp_shares: ethers.Contract;
     beforeEach(async function() {
         const ONE_DAY_IN_SECONDS = 24 * 60 * 60;
-        expiry = (await time.latest()) + ONE_DAY_IN_SECONDS;
+        startTime = (await time.latest()) + 1
+        expiry = startTime + ONE_DAY_IN_SECONDS;
+        
         [
             admin, lp1, lp2, lp3, lp4, lp5, 
             buyer1, buyer2, buyer3, buyer4, buyer5, buyer6, buyer7
@@ -69,8 +72,8 @@ describe("Test Complete Flow", function() {
     }) 
     it("Sets up Epoch", async function() {
         await usd.connect(lp1).approve(optino.address, ether("50").toString())
+        await optino.connect(admin).startNewEpoch(startTime);
         await optino.connect(lp1).liquidityDeposit(ether("50").toString())
-        await optino.connect(admin).startNewEpoch();
         let one_day_fifty_delta_strike = (await optino.currentEpoch())[3][3]
         console.log(one_day_fifty_delta_strike.toString())
     })
@@ -92,20 +95,66 @@ describe("Test Complete Flow", function() {
                 twenty_four_hours: getOptions(epoch[3])
             }
         }
+        var all_options;
+        var one_day_expiry: any;
+        var purchased_strike: any;
         beforeEach(async function() {
-            await optino.connect(admin).startNewEpoch();
+            await optino.connect(admin).startNewEpoch(startTime);
             await usd.connect(lp1).approve(optino.address, ether("50").toString())
             await optino.connect(lp1).liquidityDeposit(ether("50").toString())
         })
         it("Buys an option", async function() {
             await usd.connect(buyer1).approve(optino.address, ether("50").toString())
-            let all_options = await getEpochOptions()
-            let one_day = all_options.twenty_four_hours;
-            await optino.connect(buyer1).buyOption(one_day.expiry, one_day.fifty_delta, 10, true)
-            let price = await optino.connect(buyer1).getPrice(one_day.expiry, one_day.fifty_delta, true)
-            //console.log((await getEpochOptions()))
-
+            all_options = await getEpochOptions()
+            one_day_expiry = all_options.twenty_four_hours.expiry;
+            purchased_strike = all_options.twenty_four_hours.twenty_five_delta;
+            let balance_pre = await usd.balanceOf(buyer1.address)
+            await optino.connect(buyer1).buyOption(one_day_expiry, purchased_strike, 10, true)
+            let balance_post = await usd.balanceOf(buyer1.address);
+            let option_cost = balance_pre.sub(balance_post)
+            console.log(option_cost)
+            let price = await optino.connect(buyer1).getPrice(one_day_expiry, purchased_strike, true)
+            console.log();
+            let cost_calculated = price.mul(ethers.BigNumber.from("10"))
+            // Cost calculated from getPrice() is equal to amount taken from user
+            expect(option_cost).to.equal(cost_calculated)
         })
 
+        describe("Options Outstanding", function() {
+            var option_purchased: any;
+            var liquidityPoolDelta: any;
+            var liquidityPoolStart: any;
+            beforeEach(async function() {
+                liquidityPoolStart = await optino.liquidityAvailable();
+                await usd.connect(buyer1).approve(optino.address, ether("50").toString())
+                await optino.connect(buyer1).buyOption(one_day_expiry, purchased_strike, 10, true)
+
+                let price = await optino.connect(buyer1).getPrice(one_day_expiry, purchased_strike, true)
+                //console.log(ethers.utils.formatEther(price))
+                let collateral_per_contract = (ethers.BigNumber.from("1000000000000000000")).sub(price)
+                let cost_calculated = price.mul(ethers.BigNumber.from("10"))
+                liquidityPoolDelta = collateral_per_contract.mul(ethers.BigNumber.from("10"))
+            })
+            it("Resolves an outstanding option", async function() {
+                await time.increaseTo(one_day_expiry)
+                await optino.connect(admin).resolveOption(one_day_expiry, purchased_strike, true, true)
+                
+                let option_token_id = await option_contract.getOptionTokenId(one_day_expiry, purchased_strike, true);
+                let isITM = await optino.optionExpiredITM(option_token_id)
+                expect(isITM).to.equal(true)
+
+                let realizedLoss = await optino.realizedLoss()
+                expect(realizedLoss).to.equal(ether("10"));
+
+                let poolCollateral = await optino.poolCollateral();
+                expect(poolCollateral).to.equal(ether("0"))
+
+                let currentLiquidityAvailable = await optino.liquidityAvailable()
+                let expected_liquidity = ethers.BigNumber.from(liquidityPoolStart).sub(ethers.BigNumber.from(liquidityPoolDelta));
+                expect(expected_liquidity).to.equal(currentLiquidityAvailable)
+
+            })
+        })
     })
+    
 })
