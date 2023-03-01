@@ -22,8 +22,18 @@ contract Optino is Ownable {
 
     //Map the results of option after expiry
     mapping (uint256 => bool) public optionExpiredITM;
+    // epoch.endTime => (equity/share_requested)
+    mapping (uint256 => uint256) public epochDistributionPerShare;
 
+    uint256 public totalWithdrawRequestedShares;
+    uint256 public totalUSDCPendingWithdraw;
 
+    struct Withdrawal {
+        uint256 amount;
+        uint256 epochEndTime;
+        bool isClaimed;
+    }
+    mapping (address => Withdrawal) public withdrawRequested;
     // EPOCH Rolls over at end of longest Period
     // 6 hrs 
     // 12 hrs
@@ -184,6 +194,16 @@ contract Optino is Ownable {
                 
         
     }
+    function endEpoch() onlyOwner public {
+        // add precision
+        epochDistributionPerShare[currentEpoch.endTime] = LPEquity() / LPShares.totalSupply();
+        uint256 newDistributions = (epochDistributionPerShare[currentEpoch.endTime] * totalWithdrawRequestedShares);
+        totalUSDCPendingWithdraw += newDistributions;
+        liquidityAvailable = liquidityAvailable - newDistributions;
+        LPShares.burn(totalWithdrawRequestedShares);
+        totalWithdrawRequestedShares = 0;
+        currentEpoch.isResolved = true;
+    }
     // TODO: expiredITM arg should be oracle?
     function resolveOption(uint256 expiry, uint256 strike, bool isCall, bool expiredITM) onlyOwner public {
         // Checks Option is in Epoch 
@@ -193,7 +213,7 @@ contract Optino is Ownable {
         );
         require(
             expiry < block.timestamp,
-            "Option has not expire yet"
+            "Option has not expired yet"
         );
         // other checks
         uint256 tokenId = OptionCollection.getOptionTokenId(expiry, strike, isCall);
@@ -340,21 +360,65 @@ contract Optino is Ownable {
         liquidityAvailable += amount;
     }
 
-    function liquidityWithdraw(uint256 amount) public {
+    function isWithdrawPending(address account) public view returns(bool) {
+        if (
+            !withdrawRequested[msg.sender].isClaimed &&
+            withdrawRequested[msg.sender].epochEndTime < currentEpoch.endTime &&
+            withdrawRequested[msg.sender].amount > 0
+        ) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    function requestLiquidityWithdraw(uint256 amount) public {
+        if (isWithdrawPending(msg.sender)) {
+            withdrawLiquidity();
+        }
+        require(
+            LPShares.transferFrom(msg.sender, address(this), amount),
+            "LPShares Transfer Failed"
+        );
+        withdrawRequested[msg.sender] = Withdrawal(amount, currentEpoch.endTime, false);
+        totalWithdrawRequestedShares += amount;
         
-        uint256 currentLPEquity = LPEquity();
-        uint256 outstandingShares = LPShares.totalSupply();
+    }
 
-        // Add precision
-        uint256 equityPerShare = currentLPEquity / outstandingShares;
-        uint256 distribution = amount * equityPerShare;
-        
-        LPShares.burnFrom(msg.sender, amount);
+    function withdrawLiquidity() public {
+        require(
+            withdrawRequested[msg.sender].epochEndTime < currentEpoch.endTime,
+            "Epoch not ended yet"
+        );
+        require(
+            !withdrawRequested[msg.sender].isClaimed,
+            "Withdrawal Already Claimed"
+        );
+        uint256 distributionPerShare = epochDistributionPerShare[withdrawRequested[msg.sender].epochEndTime];
+        uint256 user_shares_pending = withdrawRequested[msg.sender].amount;
+        uint256 distribution = user_shares_pending * distributionPerShare;
         require(
             USDC.transfer(msg.sender, distribution),
-            "USD: Distribution Transfer Fails"
+            "USD: Distribution Transfer Failed"
         );
-
-        liquidityAvailable = liquidityAvailable - distribution;
+        totalUSDCPendingWithdraw = totalUSDCPendingWithdraw - distribution;
+        withdrawRequested[msg.sender].isClaimed = true;
     }
+
+    // function liquidityWithdraw(uint256 amount) public {
+    //     
+    //     uint256 currentLPEquity = LPEquity();
+    //     uint256 outstandingShares = LPShares.totalSupply();
+
+    //     // Add precision
+    //     uint256 equityPerShare = currentLPEquity / outstandingShares;
+    //     uint256 distribution = amount * equityPerShare;
+    //     
+    //     LPShares.burnFrom(msg.sender, amount);
+    //     require(
+    //         USDC.transfer(msg.sender, distribution),
+    //         "USD: Distribution Transfer Fails"
+    //     );
+
+    //     liquidityAvailable = liquidityAvailable - distribution;
+    // }
 }
