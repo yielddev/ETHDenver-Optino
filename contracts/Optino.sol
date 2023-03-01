@@ -90,7 +90,6 @@ contract Optino is Ownable {
         }
     }
 
-    // Rewrite to use recalculation of strike based on exp and starttime
     function strikeIsInEpoch(uint256 strike, uint256 expiry, bool isCall) public view returns(bool) {
         if (isCall) {
             for (uint i; i < calls.length; i++) {
@@ -132,16 +131,12 @@ contract Optino is Ownable {
         }
     }
 
-    // is this read only?
     function getDelta(bool isCall, uint256 expiry, uint256 delta) public view returns(uint256) {
         return oracle.optionStrikePriceWithCertainProb(isCall, expiry, delta);
     }
 
     function startNewEpoch(uint256 startTime) onlyOwner public {
-        // TODO: change block.timestamp to some value in the future?
-        // add puts
         // add 3 other deltas, refactor?
-        // uint256 current_time = block.timestamp;
         require(
             currentEpoch.isResolved,
             "CurrentEpoch not resolved"
@@ -195,7 +190,7 @@ contract Optino is Ownable {
         
     }
     function endEpoch() onlyOwner public {
-        // add precision
+        // TODO: add precision
         epochDistributionPerShare[currentEpoch.endTime] = LPEquity() / LPShares.totalSupply();
         uint256 newDistributions = (epochDistributionPerShare[currentEpoch.endTime] * totalWithdrawRequestedShares);
         totalUSDCPendingWithdraw += newDistributions;
@@ -244,18 +239,21 @@ contract Optino is Ownable {
             "Purchase would exceed maxContractsAvailable"
         );
         uint256 tokenId = OptionCollection.getOptionTokenId(expiry, strike, isCall);
+        uint256 price = getPrice(expiry, strike, isCall);
         //Maybe check approval before transferFrom
         //TODO: add safemath?
-        uint256 cost = amount*getPrice(expiry, strike, isCall);
+        uint256 cost = amount*price;
         require(
             USDC.transferFrom(msg.sender, address(this), cost),
             "USDC premium payment failed"
         );
         //TODO: Ensure this executes
         OptionCollection.mint(msg.sender, tokenId, amount);
-        liquidityAvailable = liquidityAvailable - (amount * ((1 ether) - getPrice(expiry, strike, isCall)));
+        liquidityAvailable = liquidityAvailable - ((amount * 1 ether) - cost);
         poolCollateral += (amount * 1 ether);
     }
+
+    // TODO: Add a function for user to exercise all of their winning options
     function exerciseOption(uint256 tokenId, uint256 amount) public {
         // Move these checks to seperate function? 
         require(
@@ -371,6 +369,7 @@ contract Optino is Ownable {
             return false;
         }
     }
+
     function requestLiquidityWithdraw(uint256 amount) public {
         if (isWithdrawPending(msg.sender)) {
             withdrawLiquidity();
@@ -404,21 +403,4 @@ contract Optino is Ownable {
         withdrawRequested[msg.sender].isClaimed = true;
     }
 
-    // function liquidityWithdraw(uint256 amount) public {
-    //     
-    //     uint256 currentLPEquity = LPEquity();
-    //     uint256 outstandingShares = LPShares.totalSupply();
-
-    //     // Add precision
-    //     uint256 equityPerShare = currentLPEquity / outstandingShares;
-    //     uint256 distribution = amount * equityPerShare;
-    //     
-    //     LPShares.burnFrom(msg.sender, amount);
-    //     require(
-    //         USDC.transfer(msg.sender, distribution),
-    //         "USD: Distribution Transfer Fails"
-    //     );
-
-    //     liquidityAvailable = liquidityAvailable - distribution;
-    // }
 }

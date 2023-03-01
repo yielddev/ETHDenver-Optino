@@ -5,7 +5,7 @@ import { ethers } from "hardhat";
 const {
     BN,
     constants,
-    ether
+    ether,
 } = require("@openzeppelin/test-helpers")
 
 describe("Test Complete Flow", function() {
@@ -77,7 +77,20 @@ describe("Test Complete Flow", function() {
     //     let one_day_fifty_delta_strike = (await optino.currentEpoch())[3][3]
     //     console.log(one_day_fifty_delta_strike.toString())
     // })
-    
+    const getLPPoolAccounting = async function() {
+      let liquidityAvailable = await optino.liquidityAvailable();
+      let poolCollateral = await optino.poolCollateral();
+      let realizedLoss = await optino.realizedLoss();
+
+      return {
+        liquidityAvailable: liquidityAvailable,
+        poolCollateral: poolCollateral,
+        realizedLoss: realizedLoss
+      }
+    }   
+    const eth = function(amount: string) {
+      return ethers.BigNumber.from(ether(amount).toString())
+    }
     describe("With Epoch Set and liquidity seeded", function() {
         const getOptions = function(expiry: any) {
             return {
@@ -160,7 +173,135 @@ describe("Test Complete Flow", function() {
                 expect(expected_liquidity).to.equal(currentLiquidityAvailable)
 
             })
+          
+          describe("Outstanding Option is Resolved", function() {
+            beforeEach(async function() {
+              all_options = await getEpochOptions()
+              one_day_expiry = all_options.twenty_four_hours.expiry;
+              purchased_strike = all_options.twenty_four_hours.twenty_five_delta;
+
+              await usd.connect(buyer1).approve(optino.address, ether("50").toString())
+              console.log(one_day_expiry, purchased_strike)
+              // await optino.connect(buyer1).buyOption(one_day_expiry, purchased_strike, 10, true)
+              await time.increaseTo(one_day_expiry)
+              await optino.connect(admin).resolveOption(one_day_expiry, purchased_strike, true, true)
+              console.log( (await getLPPoolAccounting()) )
+            })
+            it("Exercises A Winning Option", async function() {
+              let buyer_usdc_pre_balance = await usd.balanceOf(buyer1.address);
+              let option_token_id = await option_contract.getOptionTokenId(one_day_expiry, purchased_strike, true);
+              let buyer1_option_balance = await option_contract.balanceOf(buyer1.address, option_token_id)
+              console.log(buyer1_option_balance)
+              await option_contract.connect(buyer1).setApprovalForAll(optino.address, true);
+              await optino.connect(buyer1).exerciseOption(option_token_id, 10);
+              let buyer_usdc_post_balance = await usd.balanceOf(buyer1.address)
+              expect(buyer_usdc_post_balance).to.equal(buyer_usdc_pre_balance.add(ethers.BigNumber.from(ether("10").toString())))
+              console.log( (await getLPPoolAccounting()) )
+            })
+          }) 
         })
+      const approveUSD = async function(user: ethers.Signer, amount: string) {
+        await usd.connect(user).approve(optino.address, ether(amount).toString());
+      }
+      const approveAndLP = async function(user: ethers.Signer, amount: string) {
+        await approveUSD(user, amount);
+        await optino.connect(user).liquidityDeposit(ether(amount).toString())
+      }
+      const getAllCalls = async function() {
+        return {
+          six_hours: getOptions((await optino.calls(0))),
+          twelve_hours: getOptions((await optino.calls(1))),
+          twenty_four_hours: getOptions((await optino.calls(2)))
+        }
+      }
+      const buyOptions = async function(
+        user: ethers.Signer, exp: ethers.BigNumber, strike: ethers.BigNumber, amount: number, isCall: boolean
+      ) {
+        await usd.connect(user).approve(optino.address, ether("100").toString())
+        await optino.connect(user).buyOption(exp, strike, amount, isCall);
+      }
+      const resolveOption = async function(option: any, delta: ethers.BigNumber, isCall: boolean, itm: boolean) {
+        await optino.connect(admin).resolveOption(option.expiry, delta, isCall, itm)
+      }
+      describe("LP Accounting", function() {
+
+        beforeEach(async function() {
+          // already has lp1 with $50 deposit
+          await approveAndLP(lp1, "50");
+          await approveAndLP(lp2, "100");
+          await approveAndLP(lp3, "100");
+          await approveAndLP(lp4, "100");
+          await approveAndLP(lp5, "100");
+          
+        })
+        it("Checks LP Share Balances", async function() {
+          let lp1_shares_bal = await lp_shares.balanceOf(lp1.address)
+          expect(lp1_shares_bal).to.equal(ether("100"))
+          let lp2_shares_bal = await lp_shares.balanceOf(lp2.address)
+          expect(lp2_shares_bal).to.equal(ether("100"))
+          let lp3_shares_bal = await lp_shares.balanceOf(lp3.address)
+          expect(lp3_shares_bal).to.equal(ether("100"))
+          let lp4_shares_bal = await lp_shares.balanceOf(lp4.address)
+          expect(lp4_shares_bal).to.equal(ether("100"))
+          let lp5_shares_bal = await lp_shares.balanceOf(lp5.address)
+          expect(lp5_shares_bal).to.equal(ether("100"))
+        })
+        it("Checks LP Accounting", async function() {
+          let liq_avail = (await getLPPoolAccounting()).liquidityAvailable
+          expect(liq_avail).to.equal(eth("500"))
+        })
+        it("Checks LP Accounting after options purchased", async function() {
+          let calls = await getAllCalls()
+          let expected_liq_avail = (await getLPPoolAccounting()).liquidityAvailable.sub(eth("90"))
+          let expected_collateral = eth("100")
+          await buyOptions(buyer1, calls.six_hours.expiry, calls.six_hours.ten_delta, 100, true)
+
+          let pool = await getLPPoolAccounting()
+          expect(expected_liq_avail).to.equal(pool.liquidityAvailable)
+          expect(expected_collateral).to.equal(pool.poolCollateral)
+          console.log(pool)
+
+          let price_25 = await oracle_contract.optionPrice(true, calls.twelve_hours.twenty_five_delta, calls.twelve_hours.expiry)
+          let price_25_contract = await optino.getPrice(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)
+          console.log(price_25)
+          console.log(price_25_contract)
+          expected_liq_avail = pool.liquidityAvailable.sub(
+            (eth("1").sub(price_25_contract).mul(ethers.BigNumber.from("100")))
+          )
+          console.log(expected_liq_avail)
+          expected_collateral = eth("200")
+          await buyOptions(buyer2, calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, 100, true)
+
+          pool = await getLPPoolAccounting()
+          console.log(pool)
+          expect(expected_liq_avail).to.equal(pool.liquidityAvailable)
+          expect(expected_collateral).to.equal(pool.poolCollateral)
+
+          expected_collateral = ether("250")
+          let price_50_contract = await optino.getPrice(calls.twenty_four_hours.expiry, calls.twenty_four_hours.fifty_delta, true)
+          console.log(price_50_contract)
+          expected_liq_avail = pool.liquidityAvailable.sub(
+            (eth("1").sub(price_50_contract).mul(ethers.BigNumber.from("50")))
+          )
+          await buyOptions(buyer3, calls.twenty_four_hours.expiry, calls.twenty_four_hours.fifty_delta, 50, true)
+          let nav = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
+          console.log("Pre Resolution Nav: ", nav)
+
+
+          /// Resolve 
+          // Advance time to 6 hour expiry
+          await time.increaseTo(calls.six_hours.expiry)
+          let price_10 = await optino.getPrice(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
+          console.log(ethers.utils.formatEther(price_10))
+          await resolveOption(calls.six_hours, calls.six_hours.ten_delta, true, true)
+          //DEBUG navByStrike
+          nav = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
+          console.log(nav)
+          //let new_lp_equity = await optino.LPEquity()
+          //let expected_equity = eth("500").sub(eth("90"))
+          //expect(new_lp_equity).to.equal(expected_equity)
+        })
+      })
     })
     
 })
