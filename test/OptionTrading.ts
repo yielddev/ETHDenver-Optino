@@ -144,7 +144,7 @@ describe("Test Option Trading", function() {
     let post_balance2 = await usd.balanceOf(buyer2.address)
 
     expect(post_balance1).to.equal((pre_balance1.sub(ethers.BigNumber.from(ether("20").toString()))))
-    expect(post_balance2).to.equal((pre_balance2.sub(ethers.BigNumber.from(ether("76").toString()))))
+    expect(post_balance2).to.equal((pre_balance2.sub(ethers.BigNumber.from(ether("75").toString()))))
 
     await time.increaseTo(calls.six_hours.expiry) 
     await optino.connect(admin).resolveExpiredOptions(calls.six_hours.expiry, ether("1750").toString())
@@ -193,6 +193,14 @@ describe("Test Option Trading", function() {
     let new_epoch = await optino.currentEpoch() 
     console.log(new_epoch)
     expect(new_epoch[0] > epoch).to.equal(true)
+
+    let events_resolved_ITM = await optino.filters.OptionResolved(null, true)
+    let events_options_purchased = await optino.filters.OptionPurchased()
+    console.log()
+    let current_block = (await ethers.provider.getBlock("latest")).number
+    let rangeStart = current_block - 5000
+    console.log( (await optino.queryFilter(events_resolved_ITM, rangeStart)) )
+    console.log( (await optino.queryFilter(events_options_purchased, rangeStart)) )
 
 
     

@@ -62,6 +62,9 @@ contract Optino is Ownable {
 
     Epoch public currentEpoch;
 
+    event OptionResolved(uint256 tokenId, bool indexed expiredITM);
+    event OptionPurchased(address indexed account, uint256 indexed tokenId);
+
     
 
     constructor(address _usdc) {
@@ -258,6 +261,7 @@ contract Optino is Ownable {
             liquidityAvailable = liquidityAvailable + (optionSupplyOutstanding * 1 ether);
         }
         optionExpiredITM[tokenId] = expiredITM;
+        emit OptionResolved(tokenId, expiredITM);
     }
     function resolveExpiredOptions(uint256 expiry, uint256 priceAtExpiry) onlyOwner public {
         require(
@@ -316,6 +320,8 @@ contract Optino is Ownable {
         OptionCollection.mint(msg.sender, tokenId, amount);
         liquidityAvailable = liquidityAvailable - ((amount * 1 ether) - cost);
         poolCollateral += (amount * 1 ether);
+
+        emit OptionPurchased(msg.sender, tokenId);
     }
 
     // TODO: Add a function for user to exercise all of their winning options
