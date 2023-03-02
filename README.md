@@ -1,3 +1,12 @@
+# Local Testing 
+
+run forked node 
+
+`npx hardhat node --fork https://eth-goerli.nodereal.io/v1/[API_KEY]`
+
+`npx hardhat run scripts/LocalDeploy.ts --network localhost`
+
+
 # Sample Hardhat Project
 
 This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
