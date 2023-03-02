@@ -22,6 +22,8 @@ contract Optino is Ownable {
 
     //Map the results of option after expiry
     mapping (uint256 => bool) public optionExpiredITM;
+    // mapping (uint256 => bool) public optionIsResolved;
+    mapping (uint256 => bool) public expiryIsResolved;
     // epoch.endTime => (equity/share_requested)
     mapping (uint256 => uint256) public epochDistributionPerShare;
 
@@ -59,7 +61,7 @@ contract Optino is Ownable {
 
     
 
-    constructor(address _usdc, uint256 startTime) {
+    constructor(address _usdc) {
         USDC = ERC20(_usdc); 
         LPShares = new OptinoLPShares();
         OptionCollection = new OptionContract(); 
@@ -69,7 +71,17 @@ contract Optino is Ownable {
             isResolved: true,
             referencePrice: 0
         });
-        startNewEpoch(startTime);  
+        startNewEpoch();  
+    }
+
+    function isSuspended() public view returns (bool) {
+        for (uint i; i < calls.length; i++) {
+            if (calls[i].expiry < block.timestamp) {
+                if (!expiryIsResolved[calls[i].expiry]) {
+                    return true;
+                }
+            }
+        }
     }
 
     function expiryIsInEpoch(uint256 expiry, bool isCall) public view returns(bool) {
@@ -135,12 +147,14 @@ contract Optino is Ownable {
         return oracle.optionStrikePriceWithCertainProb(isCall, expiry, delta);
     }
 
-    function startNewEpoch(uint256 startTime) onlyOwner public {
+    function startNewEpoch() onlyOwner public {
+        
         // add 3 other deltas, refactor?
         require(
             currentEpoch.isResolved,
             "CurrentEpoch not resolved"
         );
+        uint256 startTime = block.timestamp;
         currentEpoch = Epoch({
             startTime: startTime,
             endTime: startTime+(24 hours),
@@ -198,29 +212,67 @@ contract Optino is Ownable {
         LPShares.burn(totalWithdrawRequestedShares);
         totalWithdrawRequestedShares = 0;
         currentEpoch.isResolved = true;
+        startNewEpoch();
     }
-    // TODO: expiredITM arg should be oracle?
-    function resolveOption(uint256 expiry, uint256 strike, bool isCall, bool expiredITM) onlyOwner public {
-        // Checks Option is in Epoch 
-        require(
-            isOptionValidInEpoch(strike, expiry, isCall),
-            "Option not Valid in this Epoch"
-        );
-        require(
-            expiry < block.timestamp,
-            "Option has not expired yet"
-        );
-        // other checks
-        uint256 tokenId = OptionCollection.getOptionTokenId(expiry, strike, isCall);
 
+    function allExpiredOptionsResolved() public view returns(bool) {
+        for (uint i; i< calls.length; i++) {
+            if (!expiryIsResolved[calls[i].expiry]) {
+                return false;
+            }
+        }
+        return true;
+    }
+    function isITM(uint256 strike, uint256 priceAtExpiry, bool isCall) public pure returns(bool) {
+        if (isCall && (priceAtExpiry >= strike)) {
+            return true;
+        } else if (!isCall && (priceAtExpiry <= strike)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    function resolveOption(uint256 expiry, uint256 strike, bool isCall, uint256 priceAtExpiry) private {
+        uint256 tokenId = OptionCollection.getOptionTokenId(expiry, strike, isCall);
+        // require(
+        //     !optionIsResolved[tokenId],
+        //     "Option is already resolved"
+        // );
         uint256 optionSupplyOutstanding = OptionCollection.totalSupply(tokenId);
         poolCollateral = poolCollateral - (optionSupplyOutstanding * 1 ether);
+        bool expiredITM = isITM(strike, priceAtExpiry, isCall);
         if (expiredITM) {
             realizedLoss = realizedLoss + (optionSupplyOutstanding * 1 ether);
         } else {
             liquidityAvailable = liquidityAvailable + (optionSupplyOutstanding * 1 ether);
         }
         optionExpiredITM[tokenId] = expiredITM;
+    }
+    function resolveExpiredOptions(uint256 expiry, uint256 priceAtExpiry) onlyOwner public {
+        require(
+            expiry < block.timestamp,
+            "Option has not expired yet"
+        );
+        require(
+            !expiryIsResolved[expiry],
+            "Expiry is already resolved"
+        );
+        for (uint i; i < calls.length; i++) {
+            // Assumption: puts and calls have the same expiry
+            if (calls[i].expiry == expiry) {
+                resolveOption(expiry, calls[i].ten_delta, true, priceAtExpiry);
+                resolveOption(expiry, calls[i].twenty_five_delta, true, priceAtExpiry);
+                resolveOption(expiry, calls[i].fifty_delta, true, priceAtExpiry);
+                resolveOption(expiry, puts[i].ten_delta, false, priceAtExpiry);
+                resolveOption(expiry, puts[i].twenty_five_delta, false, priceAtExpiry);
+                resolveOption(expiry, puts[i].fifty_delta, false, priceAtExpiry);
+                // resolve each option
+                expiryIsResolved[expiry] = true;
+                if (allExpiredOptionsResolved()) {
+                    endEpoch();
+                }
+            }
+        } 
     }
 
     function buyOption(uint256 expiry, uint256 strike, uint256 amount, bool isCall) public {
@@ -266,8 +318,34 @@ contract Optino is Ownable {
         realizedLoss = realizedLoss - (amount * 1 ether);
     }
 
+    function exerciseBatch(uint256[] memory ids, uint256[] memory amounts) public virtual {
+        uint256 payout = 0;
+        for (uint i; i < ids.length; i++) {
+            require(
+                optionExpiredITM[ids[i]] == true,
+                "Option Expired Out of the money"
+            );
+            payout += (amounts[i] * 1 ether);
+        }
+        OptionCollection.burnBatch(msg.sender, ids, amounts);
+        USDC.transfer(msg.sender, payout);
+        realizedLoss = realizedLoss - payout;
+    }
+
     function getPrice(uint256 expiry, uint256 strike, bool isCall) public view returns(uint256) {
-        return (oracle.optionPrice(isCall, strike, expiry) * 1 ether) / 100;
+        if(expiry > block.timestamp) {
+            return (oracle.optionPrice(isCall, strike, expiry) * 1 ether) / 100;
+        } else {
+            require(
+                expiryIsResolved[expiry],
+                "Expiry is not resolved"
+            );
+            if(optionExpiredITM[OptionCollection.getOptionTokenId(expiry, strike, isCall)]) {
+                return 1 ether;                                                                                         
+            } else {
+                return 0;
+            }
+        }
     }
     
     // max contracts underwritable by pool at current price and liquidity
@@ -317,11 +395,11 @@ contract Optino is Ownable {
             // Expiry memory this_expiry = currentEpoch.puts[i];
             netValue = netValue + (
                 navByStrike(
-                    puts[i].expiry, puts[i].ten_delta, true
+                    puts[i].expiry, puts[i].ten_delta, false
                 ) + navByStrike(
-                    puts[i].expiry, puts[i].twenty_five_delta, true
+                    puts[i].expiry, puts[i].twenty_five_delta, false
                 ) + navByStrike(
-                    puts[i].expiry, puts[i].fifty_delta, true
+                    puts[i].expiry, puts[i].fifty_delta, false
                 )
             );
         }
@@ -333,13 +411,16 @@ contract Optino is Ownable {
         return LPValueOfCalls() + LPValueOfPuts(); 
     }
 
-    function LPEquity() public returns(uint256) {
+    function LPEquity() public view returns(uint256) {
         return LPValueOfOptions() + liquidityAvailable;
     }
         
     function liquidityDeposit(uint256 amount) public {
-        // TODO: implement LP shares, and shares/amount calculation
 
+        require(
+            !isSuspended(),
+            "Deposits Suspended Temporarily"
+        );
         uint256 currentLPEquity = LPEquity();
         uint256 outstandingShares = LPShares.totalSupply();
         // Add precision for Floating Point

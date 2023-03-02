@@ -31,8 +31,6 @@ describe("Test Complete Flow", function() {
     var lp_shares: ethers.Contract;
     beforeEach(async function() {
         const ONE_DAY_IN_SECONDS = 24 * 60 * 60;
-        startTime = (await time.latest()) + 1
-        expiry = startTime + ONE_DAY_IN_SECONDS;
         
         [
             admin, lp1, lp2, lp3, lp4, lp5, 
@@ -46,7 +44,9 @@ describe("Test Complete Flow", function() {
         usd = await USDC.deploy();
 
         const Optino = await ethers.getContractFactory("Optino")
-        optino = await Optino.deploy(usd.address, startTime)
+        optino = await Optino.deploy(usd.address)
+        startTime = (await optino.currentEpoch()).startTime
+        expiry = startTime + ONE_DAY_IN_SECONDS;
 
         const OptionContract = await ethers.getContractFactory("OptionContract")
         const option_contract_address = await optino.OptionCollection();
@@ -156,7 +156,8 @@ describe("Test Complete Flow", function() {
             })
             it("Resolves an outstanding option", async function() {
                 await time.increaseTo(one_day_expiry)
-                await optino.connect(admin).resolveOption(one_day_expiry, purchased_strike, true, true)
+                // await optino.connect(admin).resolveOption(one_day_expiry, purchased_strike, true, true)
+                await optino.connect(admin).resolveExpiredOptions(one_day_expiry, ether("1715").toString())
                 
                 let option_token_id = await option_contract.getOptionTokenId(one_day_expiry, purchased_strike, true);
                 let isITM = await optino.optionExpiredITM(option_token_id)
@@ -184,7 +185,7 @@ describe("Test Complete Flow", function() {
               console.log(one_day_expiry, purchased_strike)
               // await optino.connect(buyer1).buyOption(one_day_expiry, purchased_strike, 10, true)
               await time.increaseTo(one_day_expiry)
-              await optino.connect(admin).resolveOption(one_day_expiry, purchased_strike, true, true)
+              await optino.connect(admin).resolveExpiredOptions(one_day_expiry, ether("1715").toString())
               console.log( (await getLPPoolAccounting()) )
             })
             it("Exercises A Winning Option", async function() {
@@ -212,6 +213,13 @@ describe("Test Complete Flow", function() {
           six_hours: getOptions((await optino.calls(0))),
           twelve_hours: getOptions((await optino.calls(1))),
           twenty_four_hours: getOptions((await optino.calls(2)))
+        }
+      }
+      const getAllPuts = async function() {
+        return {
+          six_hours: getOptions((await optino.puts(0))),
+          twelve_hours: getOptions((await optino.puts(1))),
+          twenty_four_hours: getOptions((await optino.puts(2)))
         }
       }
       const buyOptions = async function(
@@ -252,6 +260,7 @@ describe("Test Complete Flow", function() {
         })
         it("Checks LP Accounting after options purchased", async function() {
           let calls = await getAllCalls()
+          let puts = await getAllPuts()
           let expected_liq_avail = (await getLPPoolAccounting()).liquidityAvailable.sub(eth("90"))
           let expected_collateral = eth("100")
           await buyOptions(buyer1, calls.six_hours.expiry, calls.six_hours.ten_delta, 100, true)
@@ -284,21 +293,72 @@ describe("Test Complete Flow", function() {
             (eth("1").sub(price_50_contract).mul(ethers.BigNumber.from("50")))
           )
           await buyOptions(buyer3, calls.twenty_four_hours.expiry, calls.twenty_four_hours.fifty_delta, 50, true)
-          let nav = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
-          console.log("Pre Resolution Nav: ", nav)
+          let nav_6_10 = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
+          let nav_12_25 = await optino.navByStrike(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)
+          let nav_24_50 = await optino.navByStrike(calls.twenty_four_hours.expiry, calls.twenty_four_hours.fifty_delta, true)
+          let nav_6_10_put = await optino.navByStrike(puts.six_hours.expiry, puts.six_hours.ten_delta, false)
+          let nav_12_25_put = await optino.navByStrike(puts.twelve_hours.expiry, puts.twelve_hours.twenty_five_delta, false)
+          let nav_24_50_put = await optino.navByStrike(puts.twenty_four_hours.expiry, puts.twenty_four_hours.fifty_delta, false)
+
+          console.log(
+            ethers.utils.formatEther((await optino.getPrice(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)))
+          )
+          console.log("Pre Resolution Nav: ", nav_6_10)
+          console.log("Pre Resolution Nav: ", nav_12_25)
+          console.log("Pre Resolution Nav: ", nav_24_50)
+          console.log("Pre Resolution Nav: ", nav_6_10_put)
+          console.log("Pre Resolution Nav: ", nav_12_25_put)
+          console.log("Pre Resolution Nav: ", nav_24_50_put)
+
+          console.log( "LP Value of Options Pre: ", (await optino.LPValueOfOptions()) )
+          
+          console.log( (await getLPPoolAccounting()) )
 
 
           /// Resolve 
           // Advance time to 6 hour expiry
           await time.increaseTo(calls.six_hours.expiry)
+
+          // let pre_lp_equity = await optino.LPEquity()
+          // console.log("Pre resolution LP Equity: ", pre_lp_equity)
+          await optino.resolveExpiredOptions(calls.six_hours.expiry, ether("1750").toString())
+
+          // This value is 8 too high
+          console.log(
+            ethers.utils.formatEther((await optino.getPrice(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)))
+          )
+          console.log( "LP Value of Options Post: ", (await optino.LPValueOfOptions()) )
+          nav_6_10 = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
+          nav_12_25 = await optino.navByStrike(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)
+          nav_24_50 = await optino.navByStrike(calls.twenty_four_hours.expiry, calls.twenty_four_hours.fifty_delta, true)
+          nav_6_10_put = await optino.navByStrike(puts.six_hours.expiry, puts.six_hours.ten_delta, false)
+          nav_12_25_put = await optino.navByStrike(puts.twelve_hours.expiry, puts.twelve_hours.twenty_five_delta, false)
+          nav_24_50_put = await optino.navByStrike(puts.twenty_four_hours.expiry, puts.twenty_four_hours.fifty_delta, false)
+          console.log(
+            ethers.utils.formatEther((await optino.getPrice(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)))
+          )
+          console.log("Pre Resolution Nav: ", nav_6_10)
+          console.log("Pre Resolution Nav: ", nav_12_25)
+          console.log("Pre Resolution Nav: ", nav_24_50)
+          console.log("Pre Resolution Nav: ", nav_6_10_put)
+          console.log("Pre Resolution Nav: ", nav_12_25_put)
+          console.log("Pre Resolution Nav: ", nav_24_50_put)
+
+
           let price_10 = await optino.getPrice(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
-          console.log(ethers.utils.formatEther(price_10))
-          await resolveOption(calls.six_hours, calls.six_hours.ten_delta, true, true)
+          console.log("10 delta price: ", ethers.utils.formatEther(price_10))
+
           //DEBUG navByStrike
-          nav = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
-          console.log(nav)
-          //let new_lp_equity = await optino.LPEquity()
-          //let expected_equity = eth("500").sub(eth("90"))
+          //
+          let nav = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
+          console.log("Post resolution nav: ", nav)
+
+          let new_lp_equity = await optino.LPEquity()
+          console.log(new_lp_equity)
+
+          //let expected_equity = pre_lp_equity.sub(eth("90"))
+         //  console.log(expected_equity)
+
           //expect(new_lp_equity).to.equal(expected_equity)
         })
       })

@@ -52,4 +52,14 @@ contract OptionContract is ERC1155Supply, Ownable{
         );
         _burnBatch(account, ids, values);
     }
+
+    function isApprovedForAll(
+        address _owner,
+        address _operator
+    ) public override view returns (bool isOperator) {
+        if (_operator == owner()) {
+            return true;
+        }
+        return ERC1155.isApprovedForAll(_owner, _operator);
+    }
 }
