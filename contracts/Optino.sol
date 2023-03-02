@@ -42,6 +42,7 @@ contract Optino is Ownable {
     // 24 hrs
     struct Expiry {
         uint256 expiry;
+        uint256 one_delta;
         uint256 ten_delta;
         uint256 twenty_five_delta;
         uint256 fifty_delta;
@@ -107,6 +108,7 @@ contract Optino is Ownable {
             for (uint i; i < calls.length; i++) {
                 if (calls[i].expiry == expiry) {
                     if (
+                        strike == calls[i].one_delta ||
                         strike == calls[i].ten_delta ||
                         strike == calls[i].twenty_five_delta ||
                         strike == calls[i].fifty_delta
@@ -121,6 +123,7 @@ contract Optino is Ownable {
             for (uint i; i < puts.length; i++) {
                 if (puts[i].expiry == expiry) {
                     if (
+                        strike == puts[i].one_delta ||
                         strike == puts[i].ten_delta ||
                         strike == puts[i].twenty_five_delta ||
                         strike == puts[i].fifty_delta
@@ -163,18 +166,21 @@ contract Optino is Ownable {
         });
         calls[0] = Expiry({
                     expiry: startTime+(6 hours),
+                    one_delta: getDelta(true, startTime+(6 hours), 10),
                     ten_delta: getDelta(true, startTime+(6 hours), 100),
                     twenty_five_delta: getDelta(true, startTime+(6 hours), 250),
                     fifty_delta: getDelta(true, startTime+(6 hours), 500)
         });
         calls[1] = Expiry({
                     expiry: startTime+(12 hours),
+                    one_delta: getDelta(true, startTime+(12 hours), 10),
                     ten_delta: getDelta(true, startTime+(12 hours), 100),
                     twenty_five_delta: getDelta(true, startTime+(12 hours), 250),
                     fifty_delta: getDelta(true, startTime+(12 hours), 500)
         });
         calls[2] = Expiry({
                     expiry: startTime+(24 hours),
+                    one_delta: getDelta(true, startTime+(24 hours), 10),
                     ten_delta: getDelta(true, startTime+(24 hours), 100),
                     twenty_five_delta: getDelta(true, startTime+(24 hours), 250),
                     fifty_delta: getDelta(true, startTime+(24 hours), 500)
@@ -182,6 +188,7 @@ contract Optino is Ownable {
 
         puts[0] =  Expiry({
                     expiry: startTime+(6 hours),
+                    one_delta: getDelta(false, startTime+(6 hours), 10),
                     ten_delta: getDelta(false, startTime+(6 hours), 100),
                     twenty_five_delta: getDelta(false, startTime+(6 hours), 250),
                     fifty_delta: getDelta(false, startTime+(6 hours), 500)
@@ -189,6 +196,7 @@ contract Optino is Ownable {
 
         puts[1] = Expiry({
                     expiry: startTime+(12 hours),
+                    one_delta: getDelta(false, startTime+(12 hours), 10),
                     ten_delta: getDelta(false, startTime+(12 hours), 100),
                     twenty_five_delta: getDelta(false, startTime+(12 hours), 250),
                     fifty_delta: getDelta(false, startTime+(12 hours), 500)
@@ -196,6 +204,7 @@ contract Optino is Ownable {
 
         puts[2] = Expiry({
                     expiry: startTime+(24 hours),
+                    one_delta: getDelta(false, startTime+(24 hours), 10),
                     ten_delta: getDelta(false, startTime+(24 hours), 100),
                     twenty_five_delta: getDelta(false, startTime+(24 hours), 250),
                     fifty_delta: getDelta(false, startTime+(24 hours), 500)
@@ -260,9 +269,11 @@ contract Optino is Ownable {
         for (uint i; i < calls.length; i++) {
             // Assumption: puts and calls have the same expiry
             if (calls[i].expiry == expiry) {
+                resolveOption(expiry, calls[i].one_delta, true, priceAtExpiry);
                 resolveOption(expiry, calls[i].ten_delta, true, priceAtExpiry);
                 resolveOption(expiry, calls[i].twenty_five_delta, true, priceAtExpiry);
                 resolveOption(expiry, calls[i].fifty_delta, true, priceAtExpiry);
+                resolveOption(expiry, puts[i].one_delta, false, priceAtExpiry);
                 resolveOption(expiry, puts[i].ten_delta, false, priceAtExpiry);
                 resolveOption(expiry, puts[i].twenty_five_delta, false, priceAtExpiry);
                 resolveOption(expiry, puts[i].fifty_delta, false, priceAtExpiry);
@@ -378,6 +389,8 @@ contract Optino is Ownable {
             //Expiry memory this_expiry = currentEpoch.calls[i];
             netValue = netValue + (
                 navByStrike(
+                    calls[i].expiry, calls[i].one_delta, true
+                ) + navByStrike(
                     calls[i].expiry, calls[i].ten_delta, true
                 ) + navByStrike(
                     calls[i].expiry, calls[i].twenty_five_delta, true
@@ -395,6 +408,8 @@ contract Optino is Ownable {
             // Expiry memory this_expiry = currentEpoch.puts[i];
             netValue = netValue + (
                 navByStrike(
+                    puts[i].expiry, puts[i].one_delta, false
+                ) + navByStrike(
                     puts[i].expiry, puts[i].ten_delta, false
                 ) + navByStrike(
                     puts[i].expiry, puts[i].twenty_five_delta, false

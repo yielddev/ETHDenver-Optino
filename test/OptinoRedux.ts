@@ -95,9 +95,10 @@ describe("Test Complete Flow", function() {
         const getOptions = function(expiry: any) {
             return {
             expiry: expiry[0],
-            ten_delta: expiry[1],
-            twenty_five_delta: expiry[2],
-            fifty_delta: expiry[3]
+            one_delta: expiry[1],
+            ten_delta: expiry[2],
+            twenty_five_delta: expiry[3],
+            fifty_delta: expiry[4]
             }
         }
         const getEpochOptions = async function() {
@@ -293,34 +294,11 @@ describe("Test Complete Flow", function() {
             (eth("1").sub(price_50_contract).mul(ethers.BigNumber.from("50")))
           )
           await buyOptions(buyer3, calls.twenty_four_hours.expiry, calls.twenty_four_hours.fifty_delta, 50, true)
-          let nav_6_10 = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
-          let nav_12_25 = await optino.navByStrike(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)
-          let nav_24_50 = await optino.navByStrike(calls.twenty_four_hours.expiry, calls.twenty_four_hours.fifty_delta, true)
-          let nav_6_10_put = await optino.navByStrike(puts.six_hours.expiry, puts.six_hours.ten_delta, false)
-          let nav_12_25_put = await optino.navByStrike(puts.twelve_hours.expiry, puts.twelve_hours.twenty_five_delta, false)
-          let nav_24_50_put = await optino.navByStrike(puts.twenty_four_hours.expiry, puts.twenty_four_hours.fifty_delta, false)
-
-          console.log(
-            ethers.utils.formatEther((await optino.getPrice(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)))
-          )
-          console.log("Pre Resolution Nav: ", nav_6_10)
-          console.log("Pre Resolution Nav: ", nav_12_25)
-          console.log("Pre Resolution Nav: ", nav_24_50)
-          console.log("Pre Resolution Nav: ", nav_6_10_put)
-          console.log("Pre Resolution Nav: ", nav_12_25_put)
-          console.log("Pre Resolution Nav: ", nav_24_50_put)
-
-          console.log( "LP Value of Options Pre: ", (await optino.LPValueOfOptions()) )
           
-          console.log( (await getLPPoolAccounting()) )
-
-
           /// Resolve 
           // Advance time to 6 hour expiry
           await time.increaseTo(calls.six_hours.expiry)
 
-          // let pre_lp_equity = await optino.LPEquity()
-          // console.log("Pre resolution LP Equity: ", pre_lp_equity)
           await optino.resolveExpiredOptions(calls.six_hours.expiry, ether("1750").toString())
 
           // This value is 8 too high
@@ -328,28 +306,10 @@ describe("Test Complete Flow", function() {
             ethers.utils.formatEther((await optino.getPrice(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)))
           )
           console.log( "LP Value of Options Post: ", (await optino.LPValueOfOptions()) )
-          nav_6_10 = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
-          nav_12_25 = await optino.navByStrike(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)
-          nav_24_50 = await optino.navByStrike(calls.twenty_four_hours.expiry, calls.twenty_four_hours.fifty_delta, true)
-          nav_6_10_put = await optino.navByStrike(puts.six_hours.expiry, puts.six_hours.ten_delta, false)
-          nav_12_25_put = await optino.navByStrike(puts.twelve_hours.expiry, puts.twelve_hours.twenty_five_delta, false)
-          nav_24_50_put = await optino.navByStrike(puts.twenty_four_hours.expiry, puts.twenty_four_hours.fifty_delta, false)
-          console.log(
-            ethers.utils.formatEther((await optino.getPrice(calls.twelve_hours.expiry, calls.twelve_hours.twenty_five_delta, true)))
-          )
-          console.log("Pre Resolution Nav: ", nav_6_10)
-          console.log("Pre Resolution Nav: ", nav_12_25)
-          console.log("Pre Resolution Nav: ", nav_24_50)
-          console.log("Pre Resolution Nav: ", nav_6_10_put)
-          console.log("Pre Resolution Nav: ", nav_12_25_put)
-          console.log("Pre Resolution Nav: ", nav_24_50_put)
-
-
+          
           let price_10 = await optino.getPrice(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
           console.log("10 delta price: ", ethers.utils.formatEther(price_10))
 
-          //DEBUG navByStrike
-          //
           let nav = await optino.navByStrike(calls.six_hours.expiry, calls.six_hours.ten_delta, true)
           console.log("Post resolution nav: ", nav)
 

@@ -55,9 +55,10 @@ describe("Test Option Trading", function() {
     const getOptions = function(expiry: any) {
       return {
         expiry: expiry[0],
-        ten_delta: expiry[1],
-        twenty_five_delta: expiry[2],
-        fifty_delta: expiry[3]
+        one_delta: expiry[1],
+        ten_delta: expiry[2],
+        twenty_five_delta: expiry[3],
+        fifty_delta: expiry[4]
       }
     }
     const getEpochOptions = async function() {
