@@ -44,7 +44,7 @@ describe("Test Complete Flow", function() {
         usd = await USDC.deploy();
 
         const Optino = await ethers.getContractFactory("Optino")
-        optino = await Optino.deploy(usd.address)
+        optino = await Optino.deploy(usd.address, oracle_contract.address)
         startTime = (await optino.currentEpoch()).startTime
         expiry = startTime + ONE_DAY_IN_SECONDS;
 
@@ -123,6 +123,8 @@ describe("Test Complete Flow", function() {
             one_day_expiry = all_options.twenty_four_hours.expiry;
             purchased_strike = all_options.twenty_four_hours.twenty_five_delta;
             let balance_pre = await usd.balanceOf(buyer1.address)
+            // console.log(await optino.getDelta(true, one_day_expiry, purchased_strike))
+            console.log(await optino.getPrice(one_day_expiry, purchased_strike, true))
             await optino.connect(buyer1).buyOption(one_day_expiry, purchased_strike, 10, true)
             let balance_post = await usd.balanceOf(buyer1.address);
             let option_cost = balance_pre.sub(balance_post)

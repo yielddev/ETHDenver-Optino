@@ -1,7 +1,8 @@
 require("@nomicfoundation/hardhat-toolbox");
-import { time } from "@nomicfoundation/hardhat-network-helpers";
+// import { time } from "@nomicfoundation/hardhat-network-helpers";
 require('axios')
 import axios from 'axios';
+const { DefenderRelaySigner, DefenderRelayProvider } = require('defender-relay-client/lib/ethers');
 
 const {
   ether
@@ -14,25 +15,40 @@ task("resolveOption", "Resovles an expired Option")
   const delay = function(ms: number) {
     return new Promise( resolve => setTimeout(resolve, ms) );
   }
+
+  const Optino = await ethers.getContractFactory("Optino");
+  const optino = await Optino.attach(taskArgs.optinoAddress);
+
+  // const executeViaRelay = async function(expiry, price) {
+  //   const credentials = { apiKey: YOUR_API_KEY, apiSecret: YOUR_API_SECRET }
+  //   const provider = new DefenderRelayProvider(credentials)
+  //   const signer = new DefenderRelaySigner(credentials, provider, { speed: 'fast' });
+
+  //   const tx = await optino.resolveExpiredOptions(expiry, price.toString())
+    // const mined = await tx.wait();
+
+  // }
   const getPrice = async function (expiry) {
-    let pro_key = "xxx"
+    let pro_key = "2304c863-4000-42d8-8afb-2874f107b54c"
     let sandbox_key = "b54bcf4d-1bca-4e8e-9a24-22ff2c3d462c"
-    let sand_box = 'sandbox-api.coinmarketcap.com/'
-    let pro_api = 'pro-api.coinmarketcap.com/'
+    let sand_box = 'sandbox-api.coinmarketcap.com'
+    let pro_api = 'pro-api.coinmarketcap.com'
     let start = expiry
-    let end = start+1
+    let end = expiry + (60*5)
     try {
-      const response = await axios.get('https://'+ sand_box + '/v3/cryptocurrency/quotes/historical', {
-        params: { symbol: "ETH", time_start: start, time_end: end, count: 1, interval: "5m", aux: "price" },
+      const response = await axios.get('https://'+ pro_api + '/v3/cryptocurrency/quotes/historical', {
+        params: { symbol: "ETH", time_start: start, time_end: end, count: 10, interval: "5m", aux: "price" },
         headers: {
-          "X-CMC_PRO_API_KEY": sandbox_key
+          "X-CMC_PRO_API_KEY": pro_key
         }
 
       });
       // console.log(response.data)
       // console.log(response.data.data.ETH.quotes[0].quote)
       // console.log(response.data.data.ETH.quotes[0].quote.USD.price)
-      return ether(response.data.data.ETH.quotes[0].quote.USD.price.toString())
+      console.log(response.data.data.ETH[0].quotes)
+      console.log(response.data.data.ETH[0].quotes[0].quote.USD)
+      return ether(response.data.data.ETH[0].quotes[0].quote.USD.price.toString())
       // return response
     } catch (exception) {
       // console.log(exception.response)
@@ -44,16 +60,20 @@ task("resolveOption", "Resovles an expired Option")
     return ether("1750")
   }
 
-  const Optino = await ethers.getContractFactory("Optino");
-  const optino = await Optino.attach(taskArgs.optinoAddress);
   
   while (true) {
     //console.log("Is Polling")
-    console.log( (await time.latest()) )
+    console.log( (await optino.oracle()) )
+    // console.log( (await time.latest()) )
     let six_hours = (await optino.calls(0)).expiry
     let twelve_hours = (await optino.calls(1)).expiry
     let twenty_four_hours = (await optino.calls(2)).expiry
-    let now = await time.latest();
+    let latestBlock = await ethers.provider.getBlockNumber();
+    let block = await ethers.provider.getBlock(latestBlock);
+    let now = block.timestamp
+    console.log(now)
+    console.log((await getPrice(now - (60*5))).toString())
+    //let now = await time.latest();
     //console.log(  )
     // console.log((await getPrice(now)).toString())
     let price;

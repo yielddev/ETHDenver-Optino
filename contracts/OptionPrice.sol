@@ -10,13 +10,19 @@ contract OptionPrice {
 
     uint8[100] public cdf_data = [50, 52, 53, 54, 55, 56, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 80, 81, 82, 83, 84, 84, 85, 86, 86, 87, 88, 88, 89, 90, 90, 91, 91, 92, 92, 93, 93, 93, 94, 94, 95, 95, 95, 96, 96, 96, 96, 97, 97, 97, 97, 98, 98, 98, 98, 98, 98, 99, 99, 99, 99, 99, 99, 99, 99, 99, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]; 
     mapping(uint => uint) prob_to_zscore;
+    address public price_feed;
+    // Goerli: 0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e
 
+
+    constructor (address _price_feed) {
+      price_feed = _price_feed;
+    }
 
     function getPrice() public view returns (uint256) {
         // Goerli ETH / USD Address
         // https://docs.chain.link/docs/ethereum-addresses/
         AggregatorV3Interface priceFeed = AggregatorV3Interface(
-            0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e
+           price_feed 
         );
         (, int256 answer, , , ) = priceFeed.latestRoundData();
         // ETH/USD rate in 18 digit

@@ -13,7 +13,7 @@ contract Optino is Ownable {
     OptionContract public OptionCollection;
 
     OptinoLPShares public LPShares;
-    OptionPrice public oracle = OptionPrice(0x2a8cEabFE96Cd8E780c84296AE9a0E100fc12B93);
+    OptionPrice public oracle;  // OptionPrice(0x2a8cEabFE96Cd8E780c84296AE9a0E100fc12B93);
 
     Expiry[3] public calls;
     Expiry[3] public puts;
@@ -67,7 +67,8 @@ contract Optino is Ownable {
 
     
 
-    constructor(address _usdc) {
+    constructor(address _usdc, address option_price_oracle) {
+        oracle = OptionPrice(option_price_oracle);
         USDC = ERC20(_usdc); 
         LPShares = new OptinoLPShares();
         OptionCollection = new OptionContract(); 
@@ -238,9 +239,9 @@ contract Optino is Ownable {
         return true;
     }
     function isITM(uint256 strike, uint256 priceAtExpiry, bool isCall) public pure returns(bool) {
-        if (isCall && (priceAtExpiry >= strike)) {
+        if (isCall && (priceAtExpiry > (strike * 1 ether))) {
             return true;
-        } else if (!isCall && (priceAtExpiry <= strike)) {
+        } else if (!isCall && (priceAtExpiry < (strike * 1 ether))) {
             return true;
         } else {
             return false;
@@ -263,6 +264,7 @@ contract Optino is Ownable {
         optionExpiredITM[tokenId] = expiredITM;
         emit OptionResolved(tokenId, expiredITM);
     }
+    // priceAtExpiry is in wei units
     function resolveExpiredOptions(uint256 expiry, uint256 priceAtExpiry) onlyOwner public {
         require(
             expiry < block.timestamp,
@@ -309,6 +311,10 @@ contract Optino is Ownable {
         );
         uint256 tokenId = OptionCollection.getOptionTokenId(expiry, strike, isCall);
         uint256 price = getPrice(expiry, strike, isCall);
+        require(
+            price > 0,
+            "No Free Lunch"
+        );
         //Maybe check approval before transferFrom
         //TODO: add safemath?
         uint256 cost = amount*price;
@@ -354,6 +360,7 @@ contract Optino is Ownable {
     function getPrice(uint256 expiry, uint256 strike, bool isCall) public view returns(uint256) {
         if(expiry > block.timestamp) {
             return (oracle.optionPrice(isCall, strike, expiry) * 1 ether) / 100;
+            
         } else {
             require(
                 expiryIsResolved[expiry],

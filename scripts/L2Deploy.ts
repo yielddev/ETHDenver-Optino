@@ -8,7 +8,9 @@ const {
 
 async function main() {
   const OptionPrice = await ethers.getContractFactory("OptionPrice")
-  const option_price = await OptionPrice.attach("0x2a8cEabFE96Cd8E780c84296AE9a0E100fc12B93")
+  //const option_price = await OptionPrice.attach("0x2a8cEabFE96Cd8E780c84296AE9a0E100fc12B93")
+  // Arbitrum Goerli 0x62CAe0FA2da220f43a51F86Db2EDb36DcA9A5A08
+  const option_price = await OptionPrice.deploy("0x62CAe0FA2da220f43a51F86Db2EDb36DcA9A5A08")
 
   const USDC = await ethers.getContractFactory("USDC")
   const usdc = await USDC.deploy()
@@ -24,11 +26,12 @@ async function main() {
 
   const mock_users = await ethers.getSigners()
 
-  await usdc.mint(mock_users[0].address, ether("1000").toString())
-  await usdc.mint(mock_users[1].address, ether("1000").toString())
-  await usdc.mint(mock_users[2].address, ether("1000").toString())
-  await usdc.mint(mock_users[3].address, ether("1000").toString())
-  await usdc.mint(mock_users[4].address, ether("1000").toString())
+  await usdc.mint(mock_users[0].address, ether("1000000000").toString())
+  //await usdc.mint(mock_users[0].address, ether("1000").toString())
+  //await usdc.mint(mock_users[1].address, ether("1000").toString())
+  //await usdc.mint(mock_users[2].address, ether("1000").toString())
+  //await usdc.mint(mock_users[3].address, ether("1000").toString())
+  //await usdc.mint(mock_users[4].address, ether("1000").toString())
 
   
 

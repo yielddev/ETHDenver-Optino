@@ -91,7 +91,7 @@ describe("Test Option Trading", function() {
       usd = await USDC.deploy();
 
       const Optino = await ethers.getContractFactory("Optino")
-      optino = await Optino.deploy(usd.address)
+      optino = await Optino.deploy(usd.address, oracle_contract.address)
       startTime = (await optino.currentEpoch()).startTime
       expiry = startTime + ONE_DAY_IN_SECONDS;
 
