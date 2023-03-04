@@ -13,6 +13,9 @@ task("OptinoInfo", "Gets Info from Optino Contract")
     const Optino = await ethers.getContractFactory("Optino");
     const optino = await Optino.attach(taskArgs.optinoAddress);
 
+    const OptionContract = await ethers.getContractFactory("OptionContract");
+    const option_contract = await OptionContract.attach((await optino.OptionCollection()))
+
     const Oracle = await ethers.getContractFactory("OptionPrice");
     const oracle = await Oracle.attach((await optino.oracle()))
     console.log(oracle.address)
@@ -30,24 +33,38 @@ task("OptinoInfo", "Gets Info from Optino Contract")
       if (isCall) {
 
         console.log("1 Delta strike : ", option.one_delta.toString())
-        console.log("1 Delta price  : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.one_delta, isCall))),"\n")
+        console.log("1 Delta price  : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.one_delta, isCall))))
+        console.log("1 Delta TokenId: ", (await option_contract.getOptionTokenId(option.expiry, option.one_delta, isCall)), "\n")
         // console.log("1 Delta price: ", (await optino.getPrice(option.expiry, option.one_delta, isCall)))
+
         console.log("10 Delta strike: ", option.ten_delta.toString())
-        console.log("10 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.ten_delta, isCall))),"\n")
+        console.log("10 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.ten_delta, isCall))))
+        console.log("10 Delta TokenId: ", (await option_contract.getOptionTokenId(option.expiry, option.ten_delta, isCall)), "\n")
+
         console.log("25 Delta strike: ", option.twenty_five_delta.toString())
-        console.log("25 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.twenty_five_delta, isCall))),"\n")
+        console.log("25 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.twenty_five_delta, isCall))))
+        console.log("25 Delta TokenId: ", (await option_contract.getOptionTokenId(option.expiry, option.twenty_five_delta, isCall)), "\n")
+
         console.log("50 Delta strike: ", option.fifty_delta.toString())
-        console.log("50 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.fifty_delta, isCall))),"\n")
+        console.log("50 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.fifty_delta, isCall))))
+        console.log("50 Delta TokenId: ", (await option_contract.getOptionTokenId(option.expiry, option.fifty_delta, isCall)), "\n")
         
       } else {
         console.log("50 Delta strike: ", option.fifty_delta.toString())
-        console.log("50 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.fifty_delta, isCall))),"\n")
+        console.log("50 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.fifty_delta, isCall))))
+        console.log("50 Delta TokenId: ", (await option_contract.getOptionTokenId(option.expiry, option.fifty_delta, isCall)),"\n")
+
         console.log("25 Delta strike: ", option.twenty_five_delta.toString())
-        console.log("25 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.twenty_five_delta, isCall))),"\n")
+        console.log("25 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.twenty_five_delta, isCall))))
+        console.log("25 Delta TokenId: ", (await option_contract.getOptionTokenId(option.expiry, option.twenty_five_delta, isCall)), "\n")
+
         console.log("10 Delta strike: ", option.ten_delta.toString())
-        console.log("10 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.ten_delta, isCall))),"\n")
+        console.log("10 Delta price : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.ten_delta, isCall))))
+        console.log("10 Delta TokenId: ", (await option_contract.getOptionTokenId(option.expiry, option.ten_delta, isCall)), "/n")
+
         console.log("1 Delta strike : ", option.one_delta.toString())
-        console.log("1 Delta price  : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.one_delta, isCall))),"\n")
+        console.log("1 Delta price  : ", ethers.utils.formatEther((await optino.getPrice(option.expiry, option.one_delta, isCall))))
+        console.log("1 Delta TokenId: ", (await option_contract.getOptionTokenId(option.expiry, option.one_delta, isCall)), "/n")
         // console.log("1 Delta price: ", (await optino.getPrice(option.expiry, option.one_delta, isCall)))
         
 
