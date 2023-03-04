@@ -1,4 +1,15 @@
+# Scripts 
+
+Get all option prices 
+
+`npx hardhat OptinoInfo --network goerliarb 0xC9B2caf52bF6252478B708350D9eAaae195D3EB6`
+
+Provide Liquidity
+
+`npx hardhat provideLiquidity --network goerliarb 0xC9B2caf52bF6252478B708350D9eAaae195D3EB6`
+
 # Local Testing 
+
 
 run forked node 
 
