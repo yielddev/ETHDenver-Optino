@@ -1,3 +1,17 @@
+# Info
+
+We build a option product which settle to 0 or 1 based on its underlying asset’s price on expiration date. Traders receive a payout if the option expires in the money and incur a loss if it expires out of the money.
+
+
+For example , a trader buy a ETH-2000-CALL that will expire on April 1 , 2023 , at 12:00am . So when we come to expire time , if ETH price aboves 2000 , the option will settle to 1 , if ETH price belows 2000 , the option will settle to 0. 
+
+The option price is determined at the time of purchase based on the probability that the option will be in-the-money at expiry. This pricing model is written in solidity and utilizes a Chainlink price feed oracle.
+
+Options are settled after expiry using an off chain price API to determine the ether price at the specific expiry time. This settlement task is run periodically via OpenZeppelin Defender autotasks and the transactions to update the options with off chain settlement data are executed with OpenZeppelin relays for added security. 
+
+As for trader's counterparty , liquidity provider stake money into pool . When trader makes money , the LP incur a loss . When trader lose money , the LP can realize the profit. Unlike traditional option , the upside of call is limited , so the LP has a limited risk and realizes a more stable earning.
+
+
 # Scripts 
 
 Get all option prices 
