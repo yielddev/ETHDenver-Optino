@@ -220,8 +220,8 @@ contract Optino is Ownable {
     }
     function endEpoch() onlyOwner public {
         // TODO: add precision
-        epochDistributionPerShare[currentEpoch.endTime] = LPEquity() / LPShares.totalSupply();
-        uint256 newDistributions = (epochDistributionPerShare[currentEpoch.endTime] * totalWithdrawRequestedShares);
+        epochDistributionPerShare[currentEpoch.endTime] = ((LPEquity() * 1 ether) / LPShares.totalSupply());
+        uint256 newDistributions = ((epochDistributionPerShare[currentEpoch.endTime] * totalWithdrawRequestedShares))/ 1 ether;
         totalUSDCPendingWithdraw += newDistributions;
         liquidityAvailable = liquidityAvailable - newDistributions;
         LPShares.burn(totalWithdrawRequestedShares);
@@ -455,8 +455,8 @@ contract Optino is Ownable {
         uint256 outstandingShares = LPShares.totalSupply();
         // Add precision for Floating Point
         if (outstandingShares > 0) {
-            uint256 equityPerShare = currentLPEquity / outstandingShares;
-            uint256 new_shares = amount / equityPerShare;
+            uint256 equityPerShare = ((currentLPEquity * 1 ether) / outstandingShares);
+            uint256 new_shares = ((amount * 1 ether) / equityPerShare);
         } else {
             uint256 new_shares = amount;
         }
@@ -505,7 +505,7 @@ contract Optino is Ownable {
         );
         uint256 distributionPerShare = epochDistributionPerShare[withdrawRequested[msg.sender].epochEndTime];
         uint256 user_shares_pending = withdrawRequested[msg.sender].amount;
-        uint256 distribution = user_shares_pending * distributionPerShare;
+        uint256 distribution = (user_shares_pending * distributionPerShare) / 1 ether;
         require(
             USDC.transfer(msg.sender, distribution),
             "USD: Distribution Transfer Failed"
