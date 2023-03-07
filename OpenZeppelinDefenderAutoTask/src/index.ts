@@ -50,8 +50,8 @@ const getPrice = async function (expiry) {
   let sandbox_key = "b54bcf4d-1bca-4e8e-9a24-22ff2c3d462c"
   let sand_box = 'sandbox-api.coinmarketcap.com'
   let pro_api = 'pro-api.coinmarketcap.com'
-  let start = expiry - (30*5)
-  let end = start + (60*5)
+  let start = expiry - (60*1)
+  let end = start + (60*6)
   try {
     const response = await axios.get('https://'+ pro_api + '/v3/cryptocurrency/quotes/historical', {
       params: { symbol: "ETH", time_start: start, time_end: end, count: 1, interval: "5m", aux: "price" },
@@ -64,7 +64,6 @@ const getPrice = async function (expiry) {
     // console.log(response.data.data.ETH.quotes[0].quote)
     // console.log(response.data.data.ETH.quotes[0].quote.USD.price)
     //
-    let ether_price = response.data.data.ETH[0].quotes[0].quote.USD.price
     //let ether_price = response.data.data.ETH[0].quotes[0].quote.USD.price
   
     // console.log(ether_price)
@@ -72,7 +71,13 @@ const getPrice = async function (expiry) {
     // let rounded = Math.round(ether_price)
     // console.log(rounded)
 
+    //return response.data.data.ETH[0]
+    let ether_price = response.data.data.ETH[0].quotes[0].quote.USD.price
+    //if (ether_price != undefined) {
     return ethers.utils.parseUnits(ether_price.toString(), "ether")
+    //} else {
+    //  return "Price Returned undefined"
+    //}
     // return Math.round(ether_price)
     // return response
   } catch (exception) {
@@ -102,15 +107,16 @@ export async function handler(credentials: RelayerParams) {
   // console.log("block: ", latestBlock)
   // console.log("block: ", latestBlock-100) //block.sub(ethers.BigNumber.from("100")))
   //console.log("current price: ", (await getPrice(now-(60*5))))
-  //const archive_provider = new ethers.providers.JsonRpcProvider("https://skilled-twilight-field.arbitrum-goerli.discover.quiknode.pro/db01000c063395e52eaf0a8d478e5860807cc690/")
   //console.log((await priceFromOracle(now-(5*60), block, provider)).toString())
-  console.log((await getPrice(now-(5*60))).toString())
+  // console.log((await getPrice(now-(5*60))).toString())
+  // console.log((await getPrice(six_hours)).toString())
   let price;
   if(now-(60*5) > six_hours) {
     let isResolved = await optino.expiryIsResolved(six_hours)
     if (!isResolved) {
       console.log("Resolving: ", six_hours)
       price = await getPrice(six_hours)
+      console.log(price.toString())
       // price = await mockPrice(six_hours)
       await optino.resolveExpiredOptions(six_hours, price.toString())
       console.log("Resolved: ", six_hours, " at price: ", price.toString())
